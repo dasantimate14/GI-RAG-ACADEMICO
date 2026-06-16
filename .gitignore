@@ -1,0 +1,112 @@
+# ============================================
+# PYTHON
+# ============================================
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+pip-wheel-metadata/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# ============================================
+# TESTING & COVERAGE
+# ============================================
+htmlcov/
+.tox/
+.nox/
+.coverage
+.coverage.*
+nosetests.xml
+coverage.xml
+*.cover
+*.log
+.hypothesis/
+.pytest_cache/
+
+# ============================================
+# ENVIRONMENTS
+# ============================================
+.env
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+__pypackages__/
+
+# ============================================
+# JUPYTER & IPYTHON
+# ============================================
+.ipynb_checkpoints
+profile_default/
+ipython_config.py
+
+# ============================================
+# INSTALLERS & LOGS
+# ============================================
+pip-log.txt
+pip-delete-this-directory.txt
+*.manifest
+*.spec
+
+# ============================================
+# TYPE CHECKERS
+# ============================================
+.mypy_cache/
+.dmypy.json
+dmypy.json
+.pyre/
+
+# ============================================
+# IDE
+# ============================================
+.idea/
+.vscode/
+.spyderproject
+.spyproject
+.ropeproject
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# ============================================
+# OS
+# ============================================
+Thumbs.db
+desktop.ini
+.DS_Store
+*~
+
+# ============================================
+# HUGGINGFACE MODEL CACHE
+# ============================================
+.cache/
+*.cache
+
+# ============================================
+# RAG PROJECT — DATA (ignore contents, keep folders)
+# ============================================
+data/chroma_db/*
+!data/chroma_db/.gitkeep
+data/uploads/*
+!data/uploads/.gitkeep

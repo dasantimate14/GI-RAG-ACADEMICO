@@ -48,9 +48,12 @@ class MLClassifier:
         Output: list[float] → vector promedio del documento
         """
         if not chunk_embeddings:
-            return []
-        average_embeddings_document = np.mean(chunk_embeddings, axis=0)
-        return average_embeddings_document.tolist()
+            raise ValueError(
+                "chunk_embeddings no puede estar vacío"
+            )
+        embbedings_array = np.array(chunk_embeddings)
+        mean_embeddings = np.mean(embbedings_array, axis=0)
+        return mean_embeddings.tolist()
 
     def _get_optimal_k(self,
                        embeddings: list[list[float]]) -> int:
@@ -63,31 +66,38 @@ class MLClassifier:
         Output: int → k óptimo recomendado
         """
         n_docs = len(embeddings)
-        max_k = min(8, n_docs - 1)
+        k_max = min(ML_MAX_CLUSTERS, n_docs//2)
 
-        if max_k < 2:
+        if k_max < 2:
             return 2
+
+        embeddings_array = np.array(embeddings)
         best_k = 2
         best_score = -1.0
 
-        #Se evalua para cada k en el rango permitido (max_k + 1 para que sea inclusivo)
-        for k in range(2, max_k + 1):
-            self.model.set_params(
+        # Se evalua para cada k en el rango permitido (k_max + 1 para que sea inclusivo)
+        for k in range(2, k_max + 1):
+            kmeans = KMeans(
                 n_clusters=k,
                 random_state=42,
                 n_init=10,
                 max_iter=300,
             )
-            cluster_labels = self.model.fit_predict(embeddings)
+            labels = kmeans.fit_predict(embeddings_array)
 
             #Calcula la metrica de cohesion y separacion de los clusters
-            score = silhouette_score(embeddings, cluster_labels)
+            unique_labels = set(labels)
+            if len(unique_labels) < 2:
+                continue
+
+            score = silhouette_score(embeddings_array, labels)
 
             #Si el score es mejor entonces actualizamos el k optimo
             if score > best_score:
                 best_score = score
                 best_k = k
-            return best_k
+
+        return best_k
 
 
     def _generate_cluster_label(self,
@@ -107,7 +117,7 @@ class MLClassifier:
         #Filtrar los documentos que pertenecen al cluster especifico
         cluster_docs = [
             source for source, data in assignments.items()
-            if data.get("cluster_id", "") == cluster_id
+            if data["cluster_id"] == cluster_id
         ]
         if not cluster_docs:
             return f"Cluster {cluster_id}"
@@ -116,6 +126,33 @@ class MLClassifier:
 
         #Se limita a solo los primeros tres documentos para no saturar el contexto
         for source in cluster_docs[:3]:
+            try:
+                embeddings = self.vector_store.get_document_embedding(source)
+                #Toma los primeros 2 chunks de texto de este documento
+                results = self.vector_store.search(
+                    query=source,
+                    filter_source=source
+                )
+                for r in results[:2]:
+                    representative_chunks.append({
+                        "text": r["text"],
+                        "metadata": r["metadata"]
+                    })
+            except Exception:
+                #Si un documento falla continua con los demas
+                continue
+        if not representative_chunks:
+            return f"Cluster {cluster_id}"
+
+        try:
+            label = self.rag_chain.generate_summary(representative_chunks)
+            label = label.strip().rstrip(".,;:")
+            words = label.split()
+            if len(words) > 5:
+                label = " ".join(words[:5])
+            return label if label else f"Cluster {cluster_id}"
+        except Exception:
+            return f"Cluster {cluster_id}"
 
 
     def train(self, documents_embeddings: dict) -> dict:

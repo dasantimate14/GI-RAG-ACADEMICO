@@ -29,7 +29,7 @@ Sigue estos pasos para clonar, configurar e iniciar el proyecto en tu entorno lo
 
 ### 1. Clonar el repositorio
 ```bash
-git clone <URL_DEL_REPOSITORIO>
+git clone https://github.com/dasantimate14/GI-RAG-ACADEMICO.git
 cd Parcial2-RAG_Archivos_Academicos
 ```
 
@@ -55,8 +55,8 @@ pip install -r requirements.txt
 Crea un archivo llamado `.env` en la raíz del proyecto y agrega tu API Key de Groq y las rutas opcionales de almacenamiento:
 ```env
 GROQ_API_KEY=tu_groq_api_key_aqui
-CHROMA_PATH=./app/data/chroma_db
-UPLOAD_PATH=./app/data/uploads
+CHROMA_PATH=./data/chroma_db
+UPLOAD_PATH=./data/uploads
 ```
 
 ---

@@ -261,8 +261,6 @@ class MLClassifier:
         self.save()
         return self.train_result
 
-
-
     def predict(self, document_embedding: list[float]) -> dict:
         """
         Predice cluster de un documento nuevo con modelo ya entrenado.
@@ -275,6 +273,19 @@ class MLClassifier:
                 }
         Raises: RuntimeError si is_trained es False
         """
+        if not self.is_trained or self.model is None:
+            raise RuntimeError(
+                "El modelo no esta entrenado.\nLLama a train() "
+                "o verifica que el modelo se cargo correctamente desde el disco"
+            )
+        embedding_array = np.array([document_embedding])
+        cluster_id = int(self.model.predict(embedding_array)[0])
+        label = self.cluster_labels.get(cluster_id, f"Cluster {cluster_id}")
+        return {
+            "cluster_id": cluster_id,
+            "cluster_label": label
+        }
+
 
     def get_all_document_embeddings(self) -> dict:
         """

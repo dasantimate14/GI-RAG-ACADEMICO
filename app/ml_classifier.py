@@ -1,5 +1,20 @@
+import numpy as np
+import joblib
+from pathlib import Path
+
 from app.vector_store import VectorStore
 from app.rag_chain import RAGChain
+
+from sklearn.cluster import KMeans
+from sklearn.metrics import silhouette_score
+from sklearn.metrics import silhouette_samples
+
+from config import (
+    ML_MODEL_PATH,
+    ML_MIN_DOCS_FOR_TRAINING,
+    ML_MAX_CLUSTERS
+)
+
 class MLClassifier:
 
     def __init__(self, vector_store: VectorStore,
@@ -15,8 +30,20 @@ class MLClassifier:
         — self.is_trained: bool
         — self.vector_store y self.rag_chain guardados
         """
+        if Path(ML_MODEL_PATH).is_file():
+            self.model = joblib.load(ML_MODEL_PATH)
+            self.is_trained = True
+        else:
+            self.model = KMeans(
+                n_clusters=ML_MAX_CLUSTERS,
+                random_state=42,
+                n_init=10,
+                max_iter=300
+            )
         self.vector_store = vector_store
         self.rag_chain = rag_chain
+        self.is_trained = False
+
 
     def _compute_document_embedding(self,
                                     chunk_embeddings: list[list[float]]

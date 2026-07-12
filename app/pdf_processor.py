@@ -1,6 +1,7 @@
 import fitz
 import os
 import re
+from app.metada_extractor import MetadataExtractor
 from config import (
     CHUNK_SIZE,
     CHUNK_OVERLAP,
@@ -13,10 +14,12 @@ class PDFProcessor:
     def __init__(self):
         """
         Inicializa el procesador.
+        Recibe MetadataExtractor ya instanciado
         Crea la carpeta UPLOADS_PATH si no existe.
 
         Input:  nada
         Output: nada
+        — self.metadata_extractor:   MetadataExtractor
         """
         if not os.path.exists(UPLOAD_PATH):
             os.makedirs(UPLOAD_PATH, exist_ok=True)
@@ -196,15 +199,32 @@ class PDFProcessor:
 
         return chunks
 
-
-
-    def process(self, uploaded_file) -> list[dict]:
+    def _count_words(self, pages: list[dict]) -> int:
         """
-        Función principal — orquesta todo el pipeline de un PDF.
-        Llama internamente a: save_pdf → extract_text → clean_text → chunk_text
+        Cuenta palabras totales en todas las páginas.
+        Función interna usada en process().
+
+        Input:  pages → output de extract_text()
+        Output: int → total de palabras en el documento
+        """
+
+    def process(self, uploaded_file, metadata_extractor:MetadataExtractor) -> dict:
+        """
+        Función principal — orquesta el pipeline de un PDF.
+        Llama internamente a: save_pdf → extract_text → clean_text → chunk_text → MetadataExtractor.extract() → _count_words()
 
         Input:  uploaded_file → objeto de st.file_uploader()
-        Output: lista de chunks (mismo formato que chunk_text)
+        Output: Diccionario completo
+            {
+              "chunks":   [...],
+              "metadata": {...},   ← NUEVO: output de MetadataExtractor
+              "stats": {           ← NUEVO
+                "total_chunks": 47,
+                "total_pages":  12,
+                "total_words":  3420,
+                "upload_date":  "2024-01-15T10:32:00"
+              }
+            }
 
         Es la ÚNICA función que main.py necesita llamar de este módulo.
         """

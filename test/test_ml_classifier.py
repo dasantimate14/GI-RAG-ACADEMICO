@@ -70,7 +70,7 @@ def test_save_and_load():
         "d.pdf": [0.1, 0.9]
     })
     classifier.save()
-    assert os.path.exists("./data/ml_model.pkl")
+    assert os.path.exists("./data/model/ml_model.pkl")
 
     nuevo = MLClassifier(vs, rc)
     assert nuevo.is_trained == True

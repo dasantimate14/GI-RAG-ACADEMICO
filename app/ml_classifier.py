@@ -15,6 +15,8 @@ class MLClassifier:
         — self.is_trained: bool
         — self.vector_store y self.rag_chain guardados
         """
+        self.vector_store = vector_store
+        self.rag_chain = rag_chain
 
     def _compute_document_embedding(self,
                                     chunk_embeddings: list[list[float]]

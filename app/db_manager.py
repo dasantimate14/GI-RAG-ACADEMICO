@@ -23,6 +23,65 @@ class DBManager:
                 f"No se pudo conectarse con Supabase: {e}\n"
                 f"Verifica DATABASE_URL en el archivo .env"
             )
+    def _get_cursor(self):
+        """
+        Retorna cursor que devuelve dicts en vez de tuples.
+        Función interna usada por todos los métodos.
+        """
+        return self.conn.cursor(cursor_factory=RealDictCursor)
+
+    def _get_or_create_fecha(self, cursor, dt: datetime) -> int:
+        """
+        Busca o crea un registro en DIM_FECHA para la fecha dada.
+        Función interna usada por insert_consulta().
+
+        Input:  cursor → cursor activo de la transacción
+                dt     → objeto datetime de la consulta
+        Output: int → id_fecha
+        """
+        fecha = dt.date()
+        cursor.execute(
+            "SELECT id_fecha FROM dim_fecha WHERE fecha = %s",
+            (fecha,)
+        )
+        row = cursor.fetchone()
+        if row:
+            return row["id_fecha"]
+        #Mapeo de dia de la semana
+        dias = {
+            0: "Lunes", 1: "Martes", 2: "Miércoles",
+            3: "Jueves", 4: "Viernes", 5: "Sábado", 6: "Domingo"
+        }
+        cursor.execute(
+            """
+            INSERT INTO dim_fecha (fecha, dia, mes, anio, dia_semana, trimestre)
+            VALUES (%s, %s, %s, %s, %s, %s)
+            RETURNING id_fecha
+            """,
+            (
+                fecha,
+                fecha.day,
+                fecha.month,
+                fecha.year,
+                dias[fecha.weekday()],
+                (fecha.month - 1) // 3 + 1
+            )
+        )
+        return cursor.fetchone()["id_fecha"]
+
+    def _rows_to_dicts(self, cursor) ->list[dict]:
+        """
+         Convierte el resultado de fetchall() a lista de dicts.
+         Con RealDictCursor esto es automático, pero esta función
+         normaliza el tipo para garantizar list[dict] siempre.
+
+         Input:  cursor → cursor después de un SELECT
+         Output: list[dict]
+         """
+        rows = cursor.fetchall()
+        return [dict(row) for row in rows]
+
+
 
     def initialize_schema(self) -> None:
         """

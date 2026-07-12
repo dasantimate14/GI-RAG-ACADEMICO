@@ -31,8 +31,18 @@ class MLClassifier:
         — self.vector_store y self.rag_chain guardados
         """
         if Path(ML_MODEL_PATH).is_file():
-            self.model = joblib.load(ML_MODEL_PATH)
-            self.is_trained = True
+            try:
+                self.model = joblib.load(ML_MODEL_PATH)
+                self.is_trained = True
+            except Exception as e:
+                print(f"Fallo al cargar el modelo existente {e}. Inicializando un nuevo")
+                self.model = KMeans(
+                    n_clusters=ML_MAX_CLUSTERS,
+                    random_state=42,
+                    n_init=10,
+                    max_iter=300
+                )
+                self.is_trained = False
         else:
             self.model = KMeans(
                 n_clusters=ML_MAX_CLUSTERS,

@@ -331,6 +331,16 @@ class MLClassifier:
         Input:  nada
         Output: nada — escribe archivo en disco
         """
+        if self.model is None:
+            return
+
+        payload = {
+            "model": self.model,
+            "cluster_labels": self.cluster_labels,
+            "train_result": self.train_result
+        }
+        joblib.dump(payload, ML_MODEL_PATH)
+        print(f"[MLClassifier] Modelo guardado en {ML_MODEL_PATH}")
 
     def load(self) -> bool:
         """
@@ -340,3 +350,18 @@ class MLClassifier:
         Input:  nada
         Output: bool → True si se cargó, False si no existía
         """
+        if not os.path.exists(ML_MODEL_PATH):
+            return False
+        try:
+            payload = joblib.load(ML_MODEL_PATH)
+            self.model = payload["model"]
+            self.cluster_labels = payload["cluster_labels"]
+            self.train_result = payload["train_result"]
+            self.is_trained = True
+            print(f"[MLClassifier] Modelo cargado desde {ML_MODEL_PATH}")
+            return True
+        except Exception as e:
+            print(f"[MLClassifier] Error cargando modelo: {e}")
+            self.model = None
+            self.is_trained = False
+            return False

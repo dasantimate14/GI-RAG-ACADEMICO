@@ -6,7 +6,6 @@ from config import (
     LLM_MODEL
 )
 
-
 class RAGChain:
 
     def __init__(self, vector_store: VectorStore):
@@ -67,17 +66,20 @@ class RAGChain:
     def ask(self, query: str, filter_source: str = None) -> dict:
         """
         Función principal — orquesta el flujo RAG completo.
+        Se agrega el response_time_ms y similarity_scores al output para que DBManager pueda registrarlos en Supabase.
         Es la ÚNICA función que main.py necesita llamar de este módulo.
 
         Input:  query         → pregunta del usuario en texto plano
                 filter_source → (opcional) limitar búsqueda a un PDF
-        Output: dict con la respuesta y sus fuentes
+        Output: dict con la respuesta, tiempo de respuesta, puntajes de similitud y sus fuentes
                 {
                   "answer":  "La regresión lineal es...",
                   "sources": [
                     {"source": "tesis.pdf", "page": 3},
                     {"source": "tesis.pdf", "page": 7}
-                  ]
+                  ],
+                    "response_time_ms":  1230,
+                    "similarity_scores": [0.82, 0.71, 0.68]
                 }
 
         Internamente:
@@ -127,3 +129,27 @@ class RAGChain:
             "sources": sources
         }
 
+def generate_summary(self, chunks: list[dict]) -> str:
+    """
+    Genera resumen de 2-3 oraciones de un conjunto de chunks.
+    Usada por MetadataExtractor Nivel 3 y por Dashboard.
+    Prompt diferente al de ask() — orientado a síntesis, no a QA.
+
+    Input:  chunks → lista de chunks del documento (3-5 chunks)
+    Output: str → resumen conciso del contenido
+    """
+
+def text_to_sql(self, query: str, schema: str) -> str:
+    """
+    Convierte pregunta en lenguaje natural a SQL.
+    Solo genera SELECT — el prompt instruye explícitamente al LLM
+    a no generar DELETE, UPDATE, INSERT, DROP.
+    El resultado se pasa a DBManager.execute_readonly_query().
+
+    Input:  query  → pregunta del usuario en lenguaje natural
+                     ej. "¿Cuántos documentos se subieron este mes?"
+            schema → descripción de las tablas disponibles
+    Output: str → query SQL lista para ejecutar
+                  ej. "SELECT COUNT(*) FROM dim_documentos
+                        WHERE upload_date >= '2024-01-01'"
+    """

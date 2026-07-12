@@ -1,6 +1,7 @@
 import psycopg2
 from psycopg2.extras import RealDictCursor
 from datetime import datetime, timezone, date
+from config import DATABASE_URL
 
 class DBManager:
 
@@ -12,8 +13,16 @@ class DBManager:
         Input:  nada
         Output: nada
         — self.conn:   conexión psycopg2 activa
-        — self.cursor: cursor para ejecutar queries
         """
+        try:
+            self.conn = psycopg2.connect(DATABASE_URL)
+            self.conn.autocommit = False
+            print("[DBManager] Conexion a Supabase establecida")
+        except psycopg2.OperationalError as e:
+            raise ConnectionError(
+                f"No se pudo conectarse con Supabase: {e}\n"
+                f"Verifica DATABASE_URL en el archivo .env"
+            )
 
     def initialize_schema(self) -> None:
         """

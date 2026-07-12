@@ -99,6 +99,66 @@ class DBManager:
         Input:  nada
         Output: nada
         """
+        schema_sql = """
+            CREATE TABLE IF NOT EXISTS dim_documentos (
+                id_documento    SERIAL PRIMARY KEY,
+                source          VARCHAR(255) UNIQUE NOT NULL,
+                title           VARCHAR(500),
+                author          VARCHAR(255),
+                subject         VARCHAR(255),
+                keywords        TEXT,
+                year            VARCHAR(10),
+                metadata_source VARCHAR(20),
+                total_chunks    INTEGER DEFAULT 0,
+                total_pages     INTEGER DEFAULT 0,
+                total_words     INTEGER DEFAULT 0,
+                cluster_id      INTEGER,
+                cluster_label   VARCHAR(100),
+                upload_date     TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+            );
+
+            CREATE TABLE IF NOT EXISTS dim_fecha (
+                id_fecha    SERIAL PRIMARY KEY,
+                fecha       DATE NOT NULL UNIQUE,
+                dia         INTEGER,
+                mes         INTEGER,
+                anio        INTEGER,
+                dia_semana  VARCHAR(20),
+                trimestre   INTEGER
+            );
+
+            CREATE TABLE IF NOT EXISTS dim_resultados (
+                id_resultado      SERIAL PRIMARY KEY,
+                respuesta         TEXT NOT NULL,
+                chunks_retornados INTEGER,
+                avg_similarity    FLOAT,
+                sin_respuesta     BOOLEAN DEFAULT FALSE
+            );
+
+            CREATE TABLE IF NOT EXISTS fact_consultas (
+                id_consulta      SERIAL PRIMARY KEY,
+                pregunta         TEXT NOT NULL,
+                id_resultado     INTEGER REFERENCES dim_resultados(id_resultado),
+                id_fecha         INTEGER REFERENCES dim_fecha(id_fecha),
+                response_time_ms INTEGER,
+                timestamp        TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+            );
+
+            CREATE TABLE IF NOT EXISTS bridge_consulta_docs (
+                id_consulta  INTEGER REFERENCES fact_consultas(id_consulta),
+                id_documento INTEGER REFERENCES dim_documentos(id_documento),
+                PRIMARY KEY (id_consulta, id_documento)
+            );
+        """
+        try:
+            with self.conn.get_cursor() as cursor:
+                cursor.execute(schema_sql)
+            self.conn.commit()
+            print("[DBManager]Schema inicializado correctamente")
+        except Exception as e:
+            self.conn.rollback()
+            raise RuntimeError(f"Error al inicializar esquema: {e}")
+
 
     def upsert_document(self, metadata: dict,
                         stats: dict,

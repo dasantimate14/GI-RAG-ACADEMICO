@@ -130,7 +130,6 @@ class MLClassifier:
         #Se limita a solo los primeros tres documentos para no saturar el contexto
         for source in cluster_docs[:3]:
             try:
-                #embeddings = self.vector_store.get_document_embedding(source)
                 #Toma los primeros 2 chunks de texto de este documento
                 results = self.vector_store.search(
                     query=source,

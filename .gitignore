@@ -110,3 +110,5 @@ data/chroma_db/*
 !data/chroma_db/.gitkeep
 data/uploads/*
 !data/uploads/.gitkeep
+data/model/*
+!data/model/.gitkeep

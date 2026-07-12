@@ -64,6 +64,6 @@ DATABASE_URL = os.getenv("DATABASE_URL")
 # ============================================
 # ML
 # ============================================
-ML_MODEL_PATH = os.getenv("ML_MODEL_PATH", "./data/ml_model.pkl")
+ML_MODEL_PATH = os.getenv("ML_MODEL_PATH", "./data/model/ml_model.pkl")
 ML_MIN_DOCS_FOR_TRAINING = 4
 ML_MAX_CLUSTERS = 8

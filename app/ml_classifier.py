@@ -5,6 +5,9 @@ import os
 from sklearn.cluster import KMeans
 from sklearn.metrics import silhouette_score, silhouette_samples
 
+from app.vector_store import VectorStore
+from app.rag_chain import RAGChain
+
 from config import (
     ML_MODEL_PATH,
     ML_MIN_DOCS_FOR_TRAINING,
@@ -127,7 +130,7 @@ class MLClassifier:
         #Se limita a solo los primeros tres documentos para no saturar el contexto
         for source in cluster_docs[:3]:
             try:
-                embeddings = self.vector_store.get_document_embedding(source)
+                #embeddings = self.vector_store.get_document_embedding(source)
                 #Toma los primeros 2 chunks de texto de este documento
                 results = self.vector_store.search(
                     query=source,
@@ -185,6 +188,80 @@ class MLClassifier:
                   }
                 }
         """
+        n_docs = len(documents_embeddings)
+
+        #Se verifica si existe el minimo de documentos necesarios
+        if n_docs < ML_MIN_DOCS_FOR_TRAINING:
+            return {
+                "status": "insufficient_data",
+                "n_docs": n_docs,
+                "min_required": ML_MIN_DOCS_FOR_TRAINING,
+                "message": f"Se necesitan al menos {ML_MIN_DOCS_FOR_TRAINING} documentos" 
+                            f"Actualmente solo hay {n_docs}."
+            }
+        sources = list(documents_embeddings.keys())
+        embeddings = list(documents_embeddings.values())
+        embeddings_array = np.array(embeddings)
+
+        #Se determina la K optima
+        optimal_k = self._get_optimal_k(embeddings)
+
+        #Se entrena el K-Means
+        self.model = KMeans(
+            n_clusters=optimal_k,
+            random_state=42,
+            n_init=10,
+            max_iter=300
+        )
+        self.model.fit(embeddings_array)
+        self.is_trained = True
+
+        labels = self.model.labels_
+        sil_score = silhouette_score(embeddings_array, labels)
+        sil_samples = silhouette_samples(embeddings_array, labels)
+
+        #Se construyen asignaciones preliminares sin etiquetas descriptivas
+        assignments = {}
+        for i, source in enumerate(sources):
+            assignments[source] = {
+                "cluster_id": int(labels[i]),
+                "cluster_label": "",
+                "silhouette_sample": float(sil_samples[i])
+            }
+
+        #Genera labels para cada cluster
+        unique_clusters_ids = set(int(l) for l in labels)
+        self.cluster_labels = {}
+
+        for cluster_id in unique_clusters_ids:
+            label = self._generate_cluster_label(cluster_id, assignments)
+            self.cluster_labels[cluster_id] = label
+
+        #Se agregan los labels a las asignaciones
+        for source in assignments:
+            cluster_id = assignments[source]["cluster_id"]
+            assignments[source]["cluster_label"] = self.cluster_labels[cluster_id]
+
+        #Se construye la salida final
+        docs_per_cluster = {}
+        for cluster_id, label in self.cluster_labels.items():
+            count = sum(
+                1 for info in assignments.values()
+                if info["cluster_id"] == cluster_id
+            )
+            docs_per_cluster[label] = count
+
+        self.train_result = {
+            "status": "trained",
+            "n_clusters": optimal_k,
+            "silhouette_score": round(float(sil_score), 4),
+            "docs_per_cluster": docs_per_cluster,
+            "cluster_assignments": assignments
+        }
+        self.save()
+        return self.train_result
+
+
 
     def predict(self, document_embedding: list[float]) -> dict:
         """
@@ -213,6 +290,26 @@ class MLClassifier:
                   "apuntes.pdf": [0.33, 0.91, ...]
                 }
         """
+        sources = self.vector_store.get_all_sources()
+        if not sources:
+            return {}
+
+        documents_embeddings = {}
+
+        for source in sources:
+            try:
+                chunk_embeddings = self.vector_store.get_document_embedding(source)
+
+                if not chunk_embeddings:
+                    continue
+
+                doc_embedding = self._compute_document_embedding(chunk_embeddings)
+                documents_embeddings[source] = doc_embedding
+            except Exception as e:
+                print(f"[MLClassifier] Error procesando {source}: {e}")
+                continue
+
+        return documents_embeddings
 
     def save(self) -> None:
         """

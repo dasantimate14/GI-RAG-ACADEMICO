@@ -36,24 +36,13 @@ class MLClassifier:
                 self.is_trained = True
             except Exception as e:
                 print(f"Fallo al cargar el modelo existente {e}. Inicializando un nuevo")
-                self.model = KMeans(
-                    n_clusters=ML_MAX_CLUSTERS,
-                    random_state=42,
-                    n_init=10,
-                    max_iter=300
-                )
+                self.model = KMeans()
                 self.is_trained = False
         else:
-            self.model = KMeans(
-                n_clusters=ML_MAX_CLUSTERS,
-                random_state=42,
-                n_init=10,
-                max_iter=300
-            )
+            self.model = KMeans()
         self.vector_store = vector_store
         self.rag_chain = rag_chain
         self.is_trained = False
-
 
     def _compute_document_embedding(self,
                                     chunk_embeddings: list[list[float]]
@@ -66,6 +55,10 @@ class MLClassifier:
         Input:  chunk_embeddings → lista de vectores de los chunks
         Output: list[float] → vector promedio del documento
         """
+        if not chunk_embeddings:
+            return []
+        average_embeddings_document = np.mean(chunk_embeddings, axis=0)
+        return average_embeddings_document.tolist()
 
     def _get_optimal_k(self,
                        embeddings: list[list[float]]) -> int:
@@ -77,6 +70,33 @@ class MLClassifier:
         Input:  embeddings → lista de vectores de documentos
         Output: int → k óptimo recomendado
         """
+        n_docs = len(embeddings)
+        max_k = min(8, n_docs - 1)
+
+        if max_k < 2:
+            return 2
+        best_k = 2
+        best_score = -1.0
+
+        #Se evalua para cada k en el rango permitido (max_k + 1 para que sea inclusivo)
+        for k in range(2, max_k + 1):
+            self.model.set_params(
+                n_clusters=k,
+                random_state=42,
+                n_init=10,
+                max_iter=300,
+            )
+            cluster_labels = self.model.fit_predict(embeddings)
+
+            #Calcula la metrica de cohesion y separacion de los clusters
+            score = silhouette_score(embeddings, cluster_labels)
+
+            #Si el score es mejor entonces actualizamos el k optimo
+            if score > best_score:
+                best_score = score
+                best_k = k
+            return best_k
+
 
     def _generate_cluster_label(self,
                                  cluster_id: int,

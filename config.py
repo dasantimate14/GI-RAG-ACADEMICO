@@ -55,3 +55,15 @@ GROQ_API_KEY  = os.getenv("GROQ_API_KEY")
 
 if GROQ_API_KEY  is None:
     raise ValueError("GROQ_API_KEY environment variable not set")
+
+# ============================================
+# DATABASE
+# ============================================
+DATABASE_URL = os.getenv("DATABASE_URL")
+
+# ============================================
+# ML
+# ============================================
+ML_MODEL_PATH = os.getenv("ML_MODEL_PATH", "./data/ml_model.pkl")
+ML_MIN_DOCS_FOR_TRAINING = 4
+ML_MAX_CLUSTERS = 8

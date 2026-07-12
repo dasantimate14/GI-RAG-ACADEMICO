@@ -1,17 +1,21 @@
 from app.vector_store import VectorStore
-
+from app.db_manager import DBManager
 
 class Dashboard:
 
-    def __init__(self, vector_store: VectorStore):
+    def __init__(self, vector_store: VectorStore, db_manager: DBManager):
         """
-        Recibe el VectorStore ya instanciado.
+        Recibe el VectorStore y DBManager ya instanciado.
         Mismo patrón que RAGChain — no crea una nueva conexión.
+        Estadisticias generales provinene de Supabase via db_manager
+        Estadisticas de chunks siguen viniendo de ChromaDB via vector_store
 
         Input:  vector_store → instancia ya creada de VectorStore
+        vector_store → instancia ya creada de DBManager
         Output: nada
         """
         self.vector_store = vector_store
+        self.db_manager = db_manager
 
     def get_global_stats(self) -> dict:
         """
@@ -69,3 +73,31 @@ class Dashboard:
         """
         docs = self.vector_store.get_all_documents()
         return {doc["source"]: doc["total_chunks"] for doc in docs}
+
+    def get_ml_stats(self) -> dict:
+        """
+        Estadísticas del modelo K-Means para el dashboard.
+        Input:  nada
+        Output: dict
+                {
+                  "n_clusters":       3,
+                  "silhouette_score": 0.68,
+                  "docs_per_cluster": {
+                    "Machine Learning":  3,
+                    "Redes y Sistemas":  5,
+                    "Sin clasificar":    2
+                  }
+                }
+        """
+        pass
+
+        def get_usage_stats(self) -> dict:
+            """
+            Estadísticas de uso del sistema desde Supabase.
+            Wrapper sobre db_manager.get_consultas_stats() con
+            formato listo para st.metric() y st.bar_chart().
+
+            Input:  nada
+            Output: dict → output de db_manager.get_consultas_stats()
+            """
+            pass

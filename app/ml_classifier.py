@@ -1,13 +1,9 @@
 import numpy as np
 import joblib
-from pathlib import Path
-
-from app.vector_store import VectorStore
-from app.rag_chain import RAGChain
+import os
 
 from sklearn.cluster import KMeans
-from sklearn.metrics import silhouette_score
-from sklearn.metrics import silhouette_samples
+from sklearn.metrics import silhouette_score, silhouette_samples
 
 from config import (
     ML_MODEL_PATH,
@@ -30,19 +26,15 @@ class MLClassifier:
         — self.is_trained: bool
         — self.vector_store y self.rag_chain guardados
         """
-        if Path(ML_MODEL_PATH).is_file():
-            try:
-                self.model = joblib.load(ML_MODEL_PATH)
-                self.is_trained = True
-            except Exception as e:
-                print(f"Fallo al cargar el modelo existente {e}. Inicializando un nuevo")
-                self.model = KMeans()
-                self.is_trained = False
-        else:
-            self.model = KMeans()
-        self.vector_store = vector_store
-        self.rag_chain = rag_chain
-        self.is_trained = False
+        self.vector_store    = vector_store
+        self.rag_chain       = rag_chain
+        self.model           = None
+        self.is_trained      = False
+        self.cluster_labels  = {}   # {cluster_id (int): label (str)}
+        self.train_result    = {}   # guarda el último resultado de train()
+
+        os.makedirs(os.path.dirname(ML_MODEL_PATH), exist_ok=True)
+        self.load()
 
     def _compute_document_embedding(self,
                                     chunk_embeddings: list[list[float]]
@@ -112,6 +104,19 @@ class MLClassifier:
         Output: str → label descriptivo de 3-4 palabras
                       ej. "Machine Learning", "Redes y Sistemas"
         """
+        #Filtrar los documentos que pertenecen al cluster especifico
+        cluster_docs = [
+            source for source, data in assignments.items()
+            if data.get("cluster_id", "") == cluster_id
+        ]
+        if not cluster_docs:
+            return f"Cluster {cluster_id}"
+
+        representative_chunks = []
+
+        #Se limita a solo los primeros tres documentos para no saturar el contexto
+        for source in cluster_docs[:3]:
+
 
     def train(self, documents_embeddings: dict) -> dict:
         """

@@ -176,6 +176,55 @@ class DBManager:
                 cluster_label → string del cluster (None si aún no entrenado)
         Output: int → id_documento en la tabla
         """
+        try:
+            with self._get_cursor() as cursor:
+                cursor.execute(
+                    """
+                    INSERT INTO dim_documentos (
+                        source, title, author, subject, keywords,
+                        year, metadata_source, total_chunks,
+                        total_pages, total_words, cluster_id,
+                        cluster_label, upload_date
+                    )
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    ON CONFLICT (source) DO UPDATE SET
+                        title           = EXCLUDED.title,
+                        author          = EXCLUDED.author,
+                        subject         = EXCLUDED.subject,
+                        keywords        = EXCLUDED.keywords,
+                        year            = EXCLUDED.year,
+                        metadata_source = EXCLUDED.metadata_source,
+                        total_chunks    = EXCLUDED.total_chunks,
+                        total_pages     = EXCLUDED.total_pages,
+                        total_words     = EXCLUDED.total_words,
+                        cluster_id      = EXCLUDED.cluster_id,
+                        cluster_label   = EXCLUDED.cluster_label,
+                        upload_date     = EXCLUDED.upload_date
+                    RETURNING id_documento
+                    """,
+                    (
+                        metadata.get("source", ""),
+                        metadata.get("title", "Sin título"),
+                        metadata.get("author", "Desconocido"),
+                        metadata.get("subject", ""),
+                        metadata.get("keywords", ""),
+                        metadata.get("year", ""),
+                        metadata.get("metadata_source", ""),
+                        stats.get("total_chunks", 0),
+                        stats.get("total_pages", 0),
+                        stats.get("total_words", 0),
+                        cluster_id,
+                        cluster_label,
+                        stats.get("upload_date",
+                                  datetime.now(timezone.utc).isoformat())
+                    )
+                )
+                id_documento = cursor.fetchone()["id_documento"]
+            self.conn.commit()
+            return id_documento
+        except Exception as e:
+            self.conn.rollback()
+            raise RuntimeError(f"Error al Insertar/Actualizar Documento: {e}")
 
     def insert_consulta(self, query: str,
                         answer: str,
@@ -210,6 +259,24 @@ class DBManager:
                 cluster_label → label descriptivo ("Machine Learning")
         Output: nada
         """
+        try:
+            with self._get_cursor() as cursor:
+                cursor.execute(
+                    """
+                    UPDATE dim_documentos
+                    SET cluster_id    = %s,
+                        cluster_label = %s
+                    WHERE source = %s
+                    """,
+                    (cluster_id, cluster_label, source)
+                )
+                if cursor.rowcount == 0:
+                    print(f"[DBManager] Advertencia: {source} no encontrado en dim_documentos")
+            self.conn.commit()
+        except Exception as e:
+            self.conn.rollback()
+            raise RuntimeError(f"Error al actualizar los clusters ids y labels: {e}")
+
 
     def sync_check(self) -> dict:
         """
@@ -248,6 +315,30 @@ class DBManager:
                   }
                 ]
         """
+        try:
+            with self._get_cursor() as cursor:
+                cursor.execute(
+                    """
+                    SELECT
+                        id_documento,
+                        source,
+                        title,
+                        author,
+                        subject,
+                        cluster_id,
+                        cluster_label,
+                        total_chunks,
+                        total_pages,
+                        total_words,
+                        metadata_source,
+                        upload_date
+                    FROM dim_documentos
+                    ORDER BY upload_date DESC
+                    """
+                )
+                return self._rows_to_dicts(cursor)
+        except Exception as e:
+            raise RuntimeError(f"Error al obtener las estadisticas de los documentos: {e}")
 
     def get_consultas_stats(self) -> dict:
         """

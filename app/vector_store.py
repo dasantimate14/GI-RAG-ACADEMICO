@@ -227,4 +227,23 @@ class VectorStore:
             "total_documents": total_documents,
             "total_chunks": total_chunks,
             "total_pages": total_pages
-        }
+        }
+
+    def get_document_embeddings(self, source: str) -> list[list[float]]:
+        """
+        Retorna todos los embeddings de chunks de un documento.
+        Usada por MLClassifier._compute_document_embedding().
+
+        Input:  source → nombre del archivo ("tesis.pdf")
+        Output: list[list[float]] → un vector por chunk
+                [[0.12, -0.45, ...], [0.33, 0.91, ...], ...]
+        """
+
+    def get_all_sources(self) -> list[str]:
+        """
+        Retorna nombres únicos de todos los documentos indexados.
+        Usada por MLClassifier.get_all_document_embeddings().
+
+        Input:  nada
+        Output: list[str] → ["tesis.pdf", "paper.pdf", "apuntes.pdf"]
+        """

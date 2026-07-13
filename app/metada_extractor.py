@@ -29,7 +29,7 @@ class MetadataExtractor:
         cleaned = str(value).strip().lower()
         return cleaned in {"", "none", "null", "unknown", "untitled", "sin título", "-"}
 
-    def _parsed_pdf_year(self, date_str:str) -> str:
+    def _parse_pdf_year(self, date_str:str) -> str:
         """
         Extrae el año del formato de fecha de PDF.
         El formato estándar es "D:YYYYMMDDHHmmSS".
@@ -80,6 +80,30 @@ class MetadataExtractor:
                   "year":     "2024"
                 }
         """
+        empty = {
+            "title": "",
+            "author": "",
+            "subject": "",
+            "keywords": "",
+            "year": ""
+        }
+        try:
+            doc = fitz.open(pdf_path)
+            meta = doc.metadata
+            doc.close()
+        except Exception as e:
+            print(f"[MetadataExtractor] Error abriendo PDF: {e}")
+            return empty
+        return {
+            "title": self._clean_field(meta.get("title", "")),
+            "author": self._clean_field(meta.get("author", "")),
+            "subject": self._clean_field(meta.get("subject", "")),
+            "keywords": self._clean_field(meta.get("keywords", "")),
+            "year": self._parse_pdf_year(
+                meta.get("creationDate", "")
+                or meta.get("modDate", "")
+            )
+        }
 
     def extract_from_filename(self, filename: str) -> dict:
         """

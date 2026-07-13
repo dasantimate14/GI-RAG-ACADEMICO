@@ -77,27 +77,50 @@ class Dashboard:
     def get_ml_stats(self) -> dict:
         """
         Estadísticas del modelo K-Means para el dashboard.
+
         Input:  nada
         Output: dict
                 {
-                  "n_clusters":       3,
-                  "silhouette_score": 0.68,
                   "docs_per_cluster": {
                     "Machine Learning":  3,
                     "Redes y Sistemas":  5,
                     "Sin clasificar":    2
-                  }
+                  },
+                  "total_clusters": int
                 }
         """
-        pass
+        try:
+            docs = self.db_manager.get_all_document_stats()
+            docs_per_cluster = {}
+            for doc in docs:
+                label = doc.get("cluster_label") or "Sin clasificar"
+                if not label.strip():
+                    label = "Sin clasificar"
+                docs_per_cluster[label] = docs_per_cluster.get(label, 0) + 1
+            total = sum(1 for k in docs_per_cluster if k != "Sin clasificar")
+            return {"docs_per_cluster": docs_per_cluster, "total_clusters": total}
+        except Exception as e:
+            print(f"[Dashboard] Error obteniendo ML stats: {e}")
+            return {"docs_per_cluster": {}, "total_clusters": 0}
 
-        def get_usage_stats(self) -> dict:
-            """
-            Estadísticas de uso del sistema desde Supabase.
-            Wrapper sobre db_manager.get_consultas_stats() con
-            formato listo para st.metric() y st.bar_chart().
+    def get_usage_stats(self) -> dict:
+        """
+        Estadísticas de uso del sistema desde Supabase.
+        Wrapper sobre db_manager.get_consultas_stats() con
+        formato listo para st.metric() y st.bar_chart().
 
-            Input:  nada
-            Output: dict → output de db_manager.get_consultas_stats()
-            """
-            pass
+        Input:  nada
+        Output: dict → output de db_manager.get_consultas_stats()
+        """
+        try:
+            return self.db_manager.get_consultas_stats()
+        except Exception as e:
+            print(f"[Dashboard] Error obteniendo usage stats: {e}")
+            return {
+                "total_consultas":            0,
+                "avg_response_time_ms":       0,
+                "avg_similarity_score":       0,
+                "consultas_sin_respuesta":    0,
+                "consultas_por_dia":          {},
+                "documentos_mas_consultados": []
+            }

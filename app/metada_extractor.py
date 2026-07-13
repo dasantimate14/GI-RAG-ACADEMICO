@@ -242,6 +242,35 @@ class MetadataExtractor:
                   "metadata_source": "pdf"  ← pdf | filename | llm | mixed
                 }
         """
+        fields  = ["title", "author", "subject", "keywords", "year"]
+        result  = {}
+        sources = set()
+
+        for field in fields:
+            # Nivel 1
+            if not self._is_empty(pdf_meta.get(field)):
+                result[field] = pdf_meta[field]
+                sources.add("pdf")
+            # Nivel 2
+            elif not self._is_empty(filename_meta.get(field)):
+                result[field] = filename_meta[field]
+                sources.add("filename")
+            # Nivel 3
+            elif not self._is_empty(llm_meta.get(field)):
+                result[field] = llm_meta[field]
+                sources.add("llm")
+            # Si no se encuentra metadata para este campo entonces se deja vacio
+            else:
+                result[field] = ""
+        #Determina metadata_source
+        if len(sources) == 0:
+            result["metadata_source"] = "none"
+        elif len(sources) == 1:
+            result["metadata_source"] = list(sources)[0]
+        else:
+            result["metadata_source"] = "mixed"
+
+        return result
 
     def extract(self, pdf_path: str,
                 filename: str,

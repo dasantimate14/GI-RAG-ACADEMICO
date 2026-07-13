@@ -152,14 +152,14 @@ class RAGChain:
         try:
             contexto = "\n\n".join([c["text"][:300] for c in chunks[:3]])
             prompt = f"""Analiza el siguiente contenido académico y genera una descripción
-concisa de 3 a 4 palabras que capture el tema principal.
-Responde ÚNICAMENTE con las palabras descriptivas, sin puntuación
-adicional ni explicaciones.
+                        concisa de 3 a 4 palabras que capture el tema principal.
+                        Responde ÚNICAMENTE con las palabras descriptivas, sin puntuación
+                        adicional ni explicaciones.
 
-Contenido:
-{contexto}
-
-Descripción temática:"""
+                        Contenido:
+                        {contexto}
+                        
+                        Descripción temática:"""
             response = self.client.chat.completions.create(
                 messages=[{"role": "user", "content": prompt}],
                 model=LLM_MODEL,

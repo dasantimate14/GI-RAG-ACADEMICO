@@ -71,7 +71,9 @@ def init_session_state():
             st.session_state.db_manager
         )
 
-        # 8. Historial del chat
+        # 9. Archivos ya procesados
+        st.session_state.processed_files = set()
+        # 9. Historial del chat
         st.session_state.messages    = []
         st.session_state.initialized = True
 
@@ -115,6 +117,9 @@ def render_sidebar():
 
         if uploaded_files:
             for uploaded_file in uploaded_files:
+                #Saltar archivos ya procesados en sesion
+                if uploaded_file.name in st.session_state.processed_files:
+                    continue
                 with st.spinner("Procesando documento..."):
                     try:
                         # Paso 1: verifica si ya existe
@@ -134,9 +139,10 @@ def render_sidebar():
                         stats    = result["stats"]
 
                         if not chunks:
-                            st.error("No se pudo extraer texto del PDF. "
+                            st.error(f"No se pudo extraer texto del PDF {uploaded_file.name}. "
                                      "¿Es un PDF escaneado?")
-                            st.stop()
+                            #st.stop()
+                            continue
 
                         # Paso 3: indexa en ChromaDB
                         n_indexed = st.session_state.vector_store.add_documents(chunks)
@@ -184,6 +190,8 @@ def render_sidebar():
                             f"{stats['total_words']} palabras"
                         )
 
+                        st.session_state.processed_files.add(uploaded_file.name)
+
                     except Exception as e:
                         st.error(f"Error procesando '{uploaded_file.name}': {e}")
 
@@ -202,6 +210,7 @@ def render_sidebar():
                 with col2:
                     if st.button("🗑️", key=f"del_{source}"):
                         st.session_state.vector_store.delete_document(source)
+                        st.session_state.processed_files.discard(source)
                         file_path = os.path.join(UPLOAD_PATH, source)
                         if os.path.exists(file_path):
                             try:

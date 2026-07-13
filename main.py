@@ -37,20 +37,43 @@ def init_session_state():
     Nota: al usar st.session_state, las instancias se crean UNA
           sola vez aunque Streamlit re-ejecute el script completo.
     """
-    if "db_manager" not in st.session_state:
+    if "initialized" not in st.session_state:
+
+        # 1. DBManager — sin dependencias
         st.session_state.db_manager = DBManager()
-    if "vector_store" not in st.session_state:
+        st.session_state.db_manager.initialize_schema()
+
+        # 2. VectorStore — sin dependencias
         st.session_state.vector_store = VectorStore()
-    if "rag_chain" not in st.session_state:
-        st.session_state.rag_chain = RAGChain(st.session_state.vector_store)
-    if "ml_classifier" not in st.session_state:
-        st.session_state.ml_classifier = MLClassifier(st.session_state.vector_store, st.session_state.rag_chain)
-    if "metadata_extractor" not in st.session_state:
-        st.session_state.metadata_extractor = MetadataExtractor(st.session_state.rag_chain)
-    if "dashboard" not in st.session_state:
-        st.session_state.dashboard = Dashboard(st.session_state.vector_store)
-    if "messages" not in st.session_state:
-        st.session_state.messages = []
+
+        # 3. RAGChain — depende de vector_store
+        st.session_state.rag_chain = RAGChain(
+            st.session_state.vector_store
+        )
+
+        # 4. MLClassifier — depende de vector_store y rag_chain
+        st.session_state.ml_classifier = MLClassifier(
+            st.session_state.vector_store,
+            st.session_state.rag_chain
+        )
+
+        # 5. MetadataExtractor — depende de rag_chain
+        st.session_state.metadata_extractor = MetadataExtractor(
+            st.session_state.rag_chain
+        )
+
+        # 6. PDFProcessor — recibe metadata_extractor
+        st.session_state.pdf_processor = PDFProcessor()
+
+        # 7. Dashboard — depende de vector_store y db_manager
+        st.session_state.dashboard = Dashboard(
+            st.session_state.vector_store,
+            st.session_state.db_manager
+        )
+
+        # 8. Historial del chat
+        st.session_state.messages    = []
+        st.session_state.initialized = True
 
 
 def render_sidebar():
@@ -91,21 +114,78 @@ def render_sidebar():
         )
 
         if uploaded_files:
-            pdf_processor = PDFProcessor()
             for uploaded_file in uploaded_files:
-                filename = uploaded_file.name
+                with st.spinner("Procesando documento..."):
+                    try:
+                        # Paso 1: verifica si ya existe
+                        source = uploaded_file.name
+                        if st.session_state.vector_store.document_exists(source):
+                            st.warning(f"'{source}' ya está indexado. "
+                                       f"Se re-indexará.")
+                            st.session_state.vector_store.delete_document(source)
 
-                if st.session_state.vector_store.document_exists(filename):
-                    st.info(f"El archivo '{filename}' ya está indexado.")
-                else:
-                    with st.spinner(f"Indexando {filename}..."):
+                        # Paso 2: procesa el PDF (chunks + metadata + stats)
+                        result   = st.session_state.pdf_processor.process(
+                            uploaded_file,
+                            st.session_state.metadata_extractor
+                        )
+                        chunks   = result["chunks"]
+                        metadata = result["metadata"]
+                        stats    = result["stats"]
+
+                        if not chunks:
+                            st.error("No se pudo extraer texto del PDF. "
+                                     "¿Es un PDF escaneado?")
+                            st.stop()
+
+                        # Paso 3: indexa en ChromaDB
+                        n_indexed = st.session_state.vector_store.add_documents(chunks)
+
+                        # Paso 4: registra en Supabase (tolerante a fallos)
                         try:
-                            chunks = pdf_processor.process(uploaded_file)
-                            indexed_count = st.session_state.vector_store.add_documents(chunks)
-                            st.success(f"¡Indexado exitosamente! ({indexed_count} chunks)")
-                            st.rerun()
+                            st.session_state.db_manager.upsert_document(
+                                metadata=metadata,
+                                stats=stats
+                            )
                         except Exception as e:
-                            st.error(f"Error al procesar '{filename}': {str(e)}")
+                            st.warning(f"Documento indexado pero no registrado "
+                                       f"en base de datos: {e}")
+
+                        # Paso 5: re-entrena K-Means
+                        all_embeddings = (st.session_state.ml_classifier
+                                            .get_all_document_embeddings())
+                        train_result   = st.session_state.ml_classifier.train(
+                                             all_embeddings
+                                         )
+
+                        # Paso 6: actualiza clusters en Supabase si entrenó
+                        if train_result.get("status") == "trained":
+                            assignments = train_result.get("cluster_assignments", {})
+                            for doc_source, info in assignments.items():
+                                try:
+                                    st.session_state.db_manager.update_document_cluster(
+                                        source        = doc_source,
+                                        cluster_id    = info["cluster_id"],
+                                        cluster_label = info["cluster_label"]
+                                    )
+                                except Exception as e:
+                                    print(f"[main] Error actualizando cluster "
+                                          f"de {doc_source}: {e}")
+                        elif train_result.get("status") == "insufficient_data":
+                            st.info(f"Se necesitan al menos "
+                                    f"{train_result['min_required']} documentos "
+                                    f"para clasificar automáticamente. "
+                                    f"Actualmente hay {train_result['n_docs']}.")
+
+                        st.success(
+                            f"✅ '{source}' indexado correctamente. "
+                            f"{stats['total_chunks']} chunks · "
+                            f"{stats['total_pages']} páginas · "
+                            f"{stats['total_words']} palabras"
+                        )
+
+                    except Exception as e:
+                        st.error(f"Error procesando '{uploaded_file.name}': {e}")
 
         st.markdown("---")
         st.subheader("📚 Documentos Indexados")
@@ -130,7 +210,6 @@ def render_sidebar():
                                 pass
                         st.success(f"Eliminado: {source}")
                         st.rerun()
-
 
 
 def render_chat_tab():
@@ -183,12 +262,12 @@ def render_chat_tab():
         with st.chat_message("assistant"):
             with st.spinner("Buscando y generando respuesta..."):
                 try:
-                    response_dict = st.session_state.rag_chain.ask(
+                    result = st.session_state.rag_chain.ask(
                         query=user_query,
                         filter_source=filter_source
                     )
-                    answer = response_dict["answer"]
-                    sources = response_dict["sources"]
+                    answer  = result["answer"]
+                    sources = result["sources"]
 
                     st.markdown(answer)
                     if sources:
@@ -201,9 +280,22 @@ def render_chat_tab():
                         "content": answer,
                         "sources": sources
                     })
+
+                    # Registra en Supabase (tolerante a fallos)
+                    try:
+                        st.session_state.db_manager.insert_consulta(
+                            query             = user_query,
+                            answer            = result["answer"],
+                            sources           = result["sources"],
+                            response_time_ms  = result["response_time_ms"],
+                            similarity_scores = result["similarity_scores"]
+                        )
+                    except Exception as e:
+                        print(f"[main] Error registrando consulta en Supabase: {e}")
+                        # El usuario NO debe ver este error — es silencioso
+
                 except Exception as e:
                     st.error(f"Ocurrió un error al procesar tu pregunta: {str(e)}")
-
 
 
 def render_dashboard_tab():
@@ -236,34 +328,49 @@ def render_dashboard_tab():
     """
     st.header("📊 Métricas del Sistema RAG")
 
-    dashboard = st.session_state.dashboard
-    stats = dashboard.get_global_stats()
+    tab1, tab2, tab3, tab4 = st.tabs([
+        "📊 Global", "🤖 Clustering ML",
+        "💬 Consultas", "📋 Documentos"
+    ])
 
-    if stats.get("total_documents", 0) == 0:
-        st.info("No hay documentos en la base de datos. Sube archivos PDF desde el panel lateral para ver estadísticas.")
-        return
+    with tab1:
+        stats = st.session_state.dashboard.get_global_stats()
+        col1, col2, col3 = st.columns(3)
+        col1.metric("Documentos",  stats.get("total_documents", 0))
+        col2.metric("Chunks",      stats.get("total_chunks",    0))
+        col3.metric("Páginas",     stats.get("total_pages",     0))
 
-    col1, col2, col3 = st.columns(3)
-    with col1:
-        st.metric("Total Documentos", stats.get("total_documents", 0))
-    with col2:
-        st.metric("Total Chunks (Fragmentos)", stats.get("total_chunks", 0))
-    with col3:
-        st.metric("Total Páginas", stats.get("total_pages", 0))
+    with tab2:
+        ml_stats = st.session_state.dashboard.get_ml_stats()
+        if ml_stats["total_clusters"] == 0:
+            st.info("Sube al menos 4 documentos para activar "
+                    "la clasificación automática.")
+        else:
+            st.metric("Clusters detectados", ml_stats["total_clusters"])
+            st.bar_chart(ml_stats["docs_per_cluster"])
 
-    st.markdown("---")
+    with tab3:
+        usage = st.session_state.dashboard.get_usage_stats()
+        col1, col2, col3 = st.columns(3)
+        col1.metric("Total consultas",
+                    usage.get("total_consultas", 0))
+        col2.metric("Tiempo promedio (ms)",
+                    usage.get("avg_response_time_ms", 0))
+        col3.metric("Sin respuesta",
+                    usage.get("consultas_sin_respuesta", 0))
+        if usage.get("consultas_por_dia"):
+            st.line_chart(usage["consultas_por_dia"])
+        if usage.get("documentos_mas_consultados"):
+            st.subheader("Documentos más consultados")
+            st.dataframe(usage["documentos_mas_consultados"])
 
-    st.subheader("📈 Distribución de Chunks por Documento")
-    chart_data = dashboard.get_chunks_chart_data()
-    if chart_data:
-        st.bar_chart(chart_data)
+    with tab4:
+        docs = st.session_state.db_manager.get_all_document_stats()
+        if docs:
+            st.dataframe(docs)
+        else:
+            st.info("No hay documentos indexados aún.")
 
-    st.markdown("---")
-
-    st.subheader("📋 Detalle de Documentos Indexados")
-    docs_table = dashboard.get_documents_table()
-    if docs_table:
-        st.dataframe(docs_table, use_container_width=True)
 
 def render_text_to_sql_tab():
     """
@@ -278,6 +385,49 @@ def render_text_to_sql_tab():
     5. Muestra resultados en st.dataframe()
     6. rag_chain.generate_summary(resultados) → resumen en lenguaje natural
     """
+    st.subheader("Consulta los datos en lenguaje natural")
+    st.caption("Pregunta sobre estadísticas de documentos y consultas.")
+
+    schema = """
+    dim_documentos(id_documento, source, title, author, subject,
+                   total_chunks, total_pages, total_words,
+                   cluster_label, upload_date)
+    fact_consultas(id_consulta, pregunta, response_time_ms, timestamp)
+    dim_resultados(id_resultado, respuesta, avg_similarity, sin_respuesta)
+    bridge_consulta_docs(id_consulta, id_documento)
+    """
+
+    query_sql = st.text_input(
+        "¿Qué quieres saber sobre los datos?",
+        placeholder="¿Cuántos documentos se subieron este mes?"
+    )
+
+    if query_sql:
+        with st.spinner("Generando consulta SQL..."):
+            try:
+                sql = st.session_state.rag_chain.text_to_sql(
+                    query_sql, schema
+                )
+                st.code(sql, language="sql")
+
+                results = st.session_state.db_manager\
+                            .execute_readonly_query(sql)
+
+                if results:
+                    st.dataframe(results)
+                    summary = st.session_state.rag_chain.generate_summary([
+                        {"text": str(results[:5]),
+                         "metadata": {"source": "sql_result"}}
+                    ])
+                    st.info(f"💡 {summary}")
+                else:
+                    st.info("La consulta no retornó resultados.")
+
+            except ValueError as e:
+                st.error(f"Query no permitida: {e}")
+            except Exception as e:
+                st.error(f"Error ejecutando consulta: {e}")
+
 
 def main():
     """
@@ -287,7 +437,7 @@ def main():
       1. st.set_page_config()
       2. init_session_state()
       3. render_sidebar()
-      4. st.tabs() → render_chat_tab() / render_dashboard_tab()
+      4. st.tabs() → render_chat_tab() / render_text_to_sql_tab() / render_dashboard_tab()
     """
     st.set_page_config(
         page_title="RAG Académico",
@@ -297,12 +447,17 @@ def main():
     init_session_state()
     render_sidebar()
 
-    tab_chat, tab_dashboard = st.tabs(["💬 Chatbot", "📊 Dashboard"])
+    tab_chat, tab_sql, tab_dash = st.tabs([
+        "💬 Chat", "🔍 Consulta SQL", "📊 Dashboard"
+    ])
 
     with tab_chat:
         render_chat_tab()
 
-    with tab_dashboard:
+    with tab_sql:
+        render_text_to_sql_tab()
+
+    with tab_dash:
         render_dashboard_tab()
 
 

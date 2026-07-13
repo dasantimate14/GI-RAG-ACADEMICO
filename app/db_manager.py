@@ -538,3 +538,6 @@ class DBManager:
         Input:  nada
         Output: nada
         """
+        if self.conn and not self.conn.closed:
+            self.conn.close()
+            print("[DBManager] Conexion cerrada")

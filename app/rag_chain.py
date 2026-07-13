@@ -187,18 +187,18 @@ class RAGChain:
         import re
         try:
             prompt = f"""Eres un experto en SQL. Dado el siguiente schema de base de datos,
-genera ÚNICAMENTE la query SQL para responder la pregunta.
-Responde SOLO con SQL válido, sin explicaciones, sin markdown,
-sin bloques de código.
-IMPORTANTE: Solo genera SELECT. Nunca generes DELETE, UPDATE,
-INSERT, DROP, ALTER ni TRUNCATE.
-
-Schema:
-{schema}
-
-Pregunta: {query}
-
-SQL:"""
+            genera ÚNICAMENTE la query SQL para responder la pregunta.
+            Responde SOLO con SQL válido, sin explicaciones, sin markdown,
+            sin bloques de código.
+            IMPORTANTE: Solo genera SELECT. Nunca generes DELETE, UPDATE,
+            INSERT, DROP, ALTER ni TRUNCATE.
+            
+            Schema:
+            {schema}
+            
+            Pregunta: {query}
+            
+            SQL:"""
             response = self.client.chat.completions.create(
                 messages=[{"role": "user", "content": prompt}],
                 model=LLM_MODEL,

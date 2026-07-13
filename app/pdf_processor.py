@@ -1,6 +1,7 @@
 import fitz
 import os
 import re
+from datetime import datetime, timezone
 from app.metada_extractor import MetadataExtractor
 from config import (
     CHUNK_SIZE,
@@ -207,8 +208,12 @@ class PDFProcessor:
         Input:  pages → output de extract_text()
         Output: int → total de palabras en el documento
         """
+        total = 0
+        for page in pages:
+            total += len(page["text"].split())
+        return total
 
-    def process(self, uploaded_file, metadata_extractor:MetadataExtractor) -> dict:
+    def process(self, uploaded_file, metadata_extractor: MetadataExtractor = None) -> dict:
         """
         Función principal — orquesta el pipeline de un PDF.
         Llama internamente a: save_pdf → extract_text → clean_text → chunk_text → MetadataExtractor.extract() → _count_words()
@@ -229,10 +234,33 @@ class PDFProcessor:
         Es la ÚNICA función que main.py necesita llamar de este módulo.
         """
         file_path = self.save_pdf(uploaded_file)
-        if file_path == "":
+        if not file_path:
             raise ValueError(f"No se pudo guardar el archivo {uploaded_file}")
         pages_content = self.extract_text(file_path)
         for page in pages_content:
             page["text"] = self.clean_text(page["text"])
-        file_chunks = self.chunk_text(pages_content, uploaded_file.name)
-        return file_chunks
+        chunks = self.chunk_text(pages_content, uploaded_file.name)
+        if metadata_extractor is not None:
+            metadata = metadata_extractor.extract(
+                pdf_path=file_path,
+                filename=uploaded_file.name,
+                first_chunks=chunks[:3]
+            )
+        else:
+            metadata = {
+                "source": uploaded_file.name,
+                "title": "",
+                "author": "",
+                "subject": "",
+                "keywords": "",
+                "year": "",
+                "metadata_source": "none"
+            }
+        stats = {
+            "total_chunks": len(chunks),
+            "total_pages": len(pages_content),
+            "total_words": self._count_words(pages_content),
+            "upload_date": datetime.now(timezone.utc).isoformat()
+        }
+        metadata["source"] = uploaded_file.name
+        return {"chunks": chunks, "metadata": metadata, "stats": stats}

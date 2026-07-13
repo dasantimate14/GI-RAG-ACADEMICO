@@ -151,7 +151,7 @@ class DBManager:
             );
         """
         try:
-            with self.conn.get_cursor() as cursor:
+            with self._get_cursor() as cursor:
                 cursor.execute(schema_sql)
             self.conn.commit()
             print("[DBManager]Schema inicializado correctamente")

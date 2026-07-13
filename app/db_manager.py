@@ -249,7 +249,7 @@ class DBManager:
             with self._get_cursor() as cursor:
                 now = datetime.now(timezone.utc)
                 avg_sim = (sum(similarity_scores) / len(similarity_scores) if similarity_scores else 0.0)
-                sin_respuesta = "no encontr" in answer.lower()
+                sin_respuesta = "disculpe. no pude encontrar" in answer.lower()
 
                 #Inserta en DIM_RESULTADOS
                 cursor.execute(

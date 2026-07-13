@@ -245,6 +245,70 @@ class DBManager:
                 similarity_scores → scores de similitud de cada chunk
         Output: int → id_consulta generado
         """
+        try:
+            with self._get_cursor() as cursor:
+                now = datetime.now(timezone.utc)
+                avg_sim = (sum(similarity_scores) / len(similarity_scores) if similarity_scores else 0.0)
+                sin_respuesta = "no encontr" in answer.lower()
+
+                #Inserta en DIM_RESULTADOS
+                cursor.execute(
+                    """
+                    INSERT INTO dim_resultados (
+                        respuesta, chunks_retornados,
+                        avg_similarity, sin_respuesta
+                    )
+                    VALUES (%s, %s, %s, %s)
+                    RETURNING id_resultado
+                    """,
+                    (answer, len(sources), round(avg_sim, 4), sin_respuesta)
+                )
+                id_resultado = cursor.fetchone()["id_resultado"]
+
+                #Obtener o crear DIM_FECHA
+                id_fecha = self._get_or_create_fecha(cursor, now)
+
+                #Insertar en FACT_CONSULTAS
+                cursor.execute(
+                    """
+                    INSERT INTO fact_consultas (
+                        pregunta, id_resultado,
+                        id_fecha, response_time_ms, timestamp
+                    )
+                    VALUES (%s, %s, %s, %s, %s)
+                    RETURNING id_consulta
+                    """,
+                    (query, id_resultado, id_fecha, response_time_ms, now)
+                )
+                id_consulta = cursor.fetchone()["id_consulta"]
+
+                #Insertar en la tabla intermedia BRIDGE_CONSULTA_DOCS
+                unique_sources = list({s["source"] for s in sources
+                                       if "source" in s})
+
+                for source in unique_sources:
+                    cursor.execute(
+                        """
+                        SELECT id_documento FROM dim_documentos
+                        WHERE source = %s
+                        """,
+                        (source,)
+                    )
+                    row = cursor.fetchone()
+                    if row:
+                        cursor.execute(
+                            """
+                            INSERT INTO bridge_consulta_docs (id_consulta, id_documento)
+                            VALUES (%s, %s)
+                            ON CONFLICT DO NOTHING
+                            """,
+                            (id_consulta, row["id_documento"])
+                        )
+            self.conn.commit()
+            return id_consulta
+        except Exception as e:
+            self.conn.rollback()
+            raise RuntimeError(f"Error al registrar consulta: {e}")
 
     def update_document_cluster(self, source: str,
                                 cluster_id: int,

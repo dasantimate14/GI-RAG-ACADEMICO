@@ -342,12 +342,12 @@ class DBManager:
             raise RuntimeError(f"Error al actualizar los clusters ids y labels: {e}")
 
 
-    def sync_check(self) -> dict:
+    def sync_check(self, chroma_sources: list[str]) -> dict:
         """
         Compara documentos en ChromaDB vs Supabase y reporta
         inconsistencias sin resolverlas automáticamente.
 
-        Input:  nada
+        Input:  chroma_sources → list[str] de vector_store.get_all_sources()
         Output: dict con inconsistencias detectadas
                 {
                   "in_chroma_not_supabase": ["nuevo.pdf"],
@@ -355,6 +355,25 @@ class DBManager:
                   "consistent":             ["tesis.pdf", "apuntes.pdf"]
                 }
         """
+        try:
+            with self._get_cursor() as cursor:
+                cursor.execute("SELECT source FROM dim_documentos")
+                supabase_sources = {
+                    row["source"] for row in self._rows_to_dicts(cursor)
+                }
+            chroma_set = set(chroma_sources)
+            only_chroma = list(chroma_set - supabase_sources)
+            only_supabase = list(supabase_sources - chroma_set)
+            consistent = list(chroma_set & supabase_sources)
+
+            return {
+                "in_chroma_not_supabase": only_chroma,
+                "in_supabase_not_chroma": only_supabase,
+                "consistent": consistent,
+                "is_sync": len(only_chroma) == 0 and len(only_supabase) == 0
+            }
+        except Exception as e:
+            raise RuntimeError(f"Error al comprobar la sincronizacion entre chroma y supabase: {e}")
 
     def get_all_document_stats(self) -> list[dict]:
         """
@@ -493,6 +512,24 @@ class DBManager:
         Output: list[dict] → filas retornadas como lista de dicts
         Raises: ValueError si la query no empieza con SELECT
         """
+        sql_clean = sql.strip().upper()
+        if not sql_clean.startswith("SELECT"):
+            raise ValueError(f"Solo se permiten queries con SELECT. Query rechazada {sql[:50]}")
+
+        # Palabras prohibidas incluso dentro de un SELECT
+        forbidden = ["DROP", "DELETE", "UPDATE", "INSERT", "ALTER", "TRUNCATE"]
+
+        for word in forbidden:
+            if word in sql_clean:
+                raise ValueError(
+                    f"Query contiene operacion no permitida: {word}"
+                )
+        try:
+            with self._get_cursor() as cursor:
+                cursor.execute(sql)
+                return self._rows_to_dicts(cursor)
+        except psycopg2.Error as e:
+            raise RuntimeError(f"Error ejecutando la consulta: {e}")
 
     def close(self) -> None:
         """

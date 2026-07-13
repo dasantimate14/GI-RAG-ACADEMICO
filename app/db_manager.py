@@ -420,6 +420,68 @@ class DBManager:
                                                   "count": 34}, ...]
                 }
         """
+        try:
+            with self._get_cursor() as cursor:
+                # Total y metricas globales
+                cursor.execute(
+                    """
+                    SELECT
+                        COUNT(*)                    AS total_consultas,
+                        AVG(response_time_ms)       AS avg_response_time_ms,
+                        AVG(dr.avg_similarity)      AS avg_similarity_score,
+                        SUM(CASE WHEN dr.sin_respuesta THEN 1 ELSE 0 END)      
+                                                    AS consultas_sin_respuesta
+                    FROM fact_consultas fc
+                    JOIN dim_resultados dr
+                        ON fc.id_resultado = dr.id_resultado
+                    """
+                )
+
+                globals_row = dict(cursor.fetchone())
+                #Consultas por dias
+                cursor.execute(
+                    """
+                    SELECT
+                        df.fecha::text AS fecha,
+                        COUNT(*)       AS total
+                    FROM fact_consultas fc
+                    JOIN dim_fecha df ON fc.id_fecha = df.id_fecha
+                    GROUP BY df.fecha
+                    ORDER BY df.fecha DESC
+                    LIMIT 30
+                    """
+                )
+                consultas_por_dia = {
+                    row["fecha"]: row["total"]
+                    for row in self._rows_to_dicts(cursor)
+                }
+
+                #Documentos más consultados
+                cursor.execute(
+                    """
+                    SELECT
+                        dd.source,
+                        dd.title,
+                        COUNT(*) AS total_consultas
+                    FROM bridge_consulta_docs bcd
+                    JOIN dim_documentos dd
+                        ON bcd.id_documento = dd.id_documento
+                    GROUP BY dd.source, dd.title
+                    ORDER BY total_consultas DESC
+                    LIMIT 10
+                    """
+                )
+                docs_mas_consultados = self._rows_to_dicts(cursor)
+            return {
+                "total_consultas": int(globals_row.get("total_consultas") or 0),
+                "avg_response_time_ms": round(float(globals_row.get("avg_response_time_ms") or 0), 0),
+                "avg_similarity_score": round(float(globals_row.get("avg_similarity_score") or 0), 3),
+                "consultas_sin_respuesta": int(globals_row.get("consultas_sin_respuesta") or 0),
+                "consultas_por_dia": consultas_por_dia,
+                "documentos_mas_consultados": docs_mas_consultados
+            }
+        except Exception as e:
+            raise RuntimeError(f"Error al obtener las estadisticas de las consultas: {e}")
 
     def execute_readonly_query(self, sql: str) -> list[dict]:
         """

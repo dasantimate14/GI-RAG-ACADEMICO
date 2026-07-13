@@ -284,3 +284,28 @@ class MetadataExtractor:
                 first_chunks → primeros 3 chunks para Nivel 3
         Output: dict final de merge_metadata()
         """
+        #Nivel 1
+        pdf_meta = self.extract_from_pdf(pdf_path)
+        #Nivel 2
+        filename_meta = self.extract_from_filename(filename)
+        #Nivel 3
+        merged_so_far = self.merge_metadata(pdf_meta, filename_meta, {})
+
+        needs_llm = (
+            self._is_empty(merged_so_far.get("title")) and
+            self._is_empty(merged_so_far.get("subject"))
+        )
+
+        llm_meta = {}
+        if needs_llm:
+            print(f"[MetadataExtractor] Activando Nivel 3 (LLM) "
+                  f"para {filename}")
+            llm_meta = self.extract_with_llm(first_chunks)
+
+        #Merge Final
+        final = self.merge_metadata(pdf_meta, filename_meta, llm_meta)
+
+        #Agrega source al resultado final para DBManager
+        final["source"] = filename
+
+        return final

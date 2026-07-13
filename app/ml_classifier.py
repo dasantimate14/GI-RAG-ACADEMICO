@@ -308,7 +308,7 @@ class MLClassifier:
 
         for source in sources:
             try:
-                chunk_embeddings = self.vector_store.get_document_embedding(source)
+                chunk_embeddings = self.vector_store.get_document_embeddings(source)
 
                 if not chunk_embeddings:
                     continue

@@ -1,3 +1,7 @@
+from http.client import responses
+
+from lib2to3.btm_utils import reduce_tree
+
 import fitz, re, json
 from datetime import datetime
 from app.rag_chain import RAGChain
@@ -119,6 +123,31 @@ class MetadataExtractor:
                   "keywords": "apuntes, redes"
                 }
         """
+        #Elimina la extension del archivo
+        name = re.sub(r"\.pdf$", "", filename, flags=re.IGNORECASE)
+
+        # Extrae año si aparece (4 dígitos entre 1900-2099)
+        year_match = re.search(r"(19|20)\d{2}", name)
+        year = year_match.group() if year_match else ""
+
+        #Elimina el año del nombre para no incluirlo en el título
+        name_without_year = re.sub(r"(19|20)\d{2}", "", name)
+
+        # Reemplaza separadores comunes por espacios
+        name_clean = re.sub(r"[_\-\.]+", " ", name_without_year)
+        name_clean = re.sub(r"\s+", " ", name_clean).strip().lower()
+
+        #Las palabras del nombre son las keyword inferidas
+        words = [word for word in name_clean.split() if len(word) > 2]
+        keywords = ", ".join(words) if words else ""
+        title = name_clean.title() if name_clean else ""
+        return {
+            "title": title,
+            "author": "", #No se puede inferir el nombre de esta manera
+            "subject": "", #No se puede inferir el nombre de esta manera
+            "keywords": keywords,
+            "year": year
+        }
 
     def extract_with_llm(self, first_chunks: list[dict]) -> dict:
         """
@@ -136,6 +165,59 @@ class MetadataExtractor:
                   "keywords": "TCP/IP, routing, switching"
                 }
         """
+        empty = {
+            "title": "",
+            "author": "",
+            "subject": "",
+            "keywords": "",
+            "year": ""
+        }
+        if not first_chunks:
+            return empty
+
+        # Construye texto de muestra con los primeros 3 chunks
+        sample_text = "\n\n".join([
+            chunk["text"][:500]   # primeros 500 chars de cada chunk
+            for chunk in first_chunks[:3]
+        ])
+        prompt_chunks = [{
+            "text": (
+                f"Analiza el siguiente texto académico y extrae "
+                f"la metadata en formato JSON con exactamente estas keys: "
+                f"title, author, subject, keywords.\n\n"
+                f"Reglas:\n"
+                f"- title: título del documento o tema principal\n"
+                f"- author: autor si aparece, sino 'No identificado'\n"
+                f"- subject: área temática en 2-4 palabras\n"
+                f"- keywords: 3-5 palabras clave separadas por coma\n"
+                f"- Responde SOLO con el JSON, sin explicaciones\n\n"
+                f"Texto:\n{sample_text}"
+            ),
+            "metadata": {"source": "llm_metadata_extraction"}
+        }]
+
+        try:
+            response = self.rag_chain.generate_summary(prompt_chunks)
+            # Limpia el response, el LLM a veces agrega ```json
+            response_clean = re.sub(r"```(?:json)?\s*|\s*```", "", response).strip()
+            parsed = json.loads(response_clean)
+
+            return {
+                "title": self._clean_field(str(parsed.get("title", ""))),
+                "author": self._clean_field(str(parsed.get("author", ""))),
+                "subject": self._clean_field(str(parsed.get("subject", ""))),
+                "keywords": self._clean_field(str(parsed.get("keywords", ""))),
+                "year": ""
+            }
+        except json.JSONDecodeError:
+            print("[MetadataExtractor] LLM no retornó JSON válido "
+                  f"- response: {response[:100]}")
+            return empty
+        except Exception as e:
+            print(f"[MetadataExtractor] Error en Nivel 3: {e}")
+            return empty
+
+
 
     def merge_metadata(self,
                        pdf_meta: dict,

@@ -88,16 +88,25 @@ class RAGChain:
           3. Envía el prompt a Groq
           4. Retorna respuesta + fuentes
         """
+        import time
+
         resultado_busqueda = self.vector_store.search(query, filter_source=filter_source)
         prompt = self.build_prompt(query=query, chunks=resultado_busqueda)
 
+        inicio = time.time()
         chat_completion = self.client.chat.completions.create(
             messages=prompt,
             model=LLM_MODEL,
             temperature=0.0,
             max_tokens=1000
         )
+        fin = time.time()
+        response_time_ms = int((fin - inicio) * 1000)
+
         answer = chat_completion.choices[0].message.content
+
+        similarity_scores = [chunk.get("distance", 0.0)
+                             for chunk in resultado_busqueda]
 
         sources = []
         seen = set()
@@ -126,30 +135,78 @@ class RAGChain:
 
         return {
             "answer": answer,
-            "sources": sources
+            "sources": sources,
+            "response_time_ms": response_time_ms,
+            "similarity_scores": similarity_scores
         }
 
-def generate_summary(self, chunks: list[dict]) -> str:
-    """
-    Genera resumen de 2-3 oraciones de un conjunto de chunks.
-    Usada por MetadataExtractor Nivel 3 y por Dashboard.
-    Prompt diferente al de ask() — orientado a síntesis, no a QA.
+    def generate_summary(self, chunks: list[dict]) -> str:
+        """
+        Genera resumen de 2-3 oraciones de un conjunto de chunks.
+        Usada por MetadataExtractor Nivel 3 y por Dashboard.
+        Prompt diferente al de ask() — orientado a síntesis, no a QA.
 
-    Input:  chunks → lista de chunks del documento (3-5 chunks)
-    Output: str → resumen conciso del contenido
-    """
+        Input:  chunks → lista de chunks del documento (3-5 chunks)
+        Output: str → resumen conciso del contenido
+        """
+        try:
+            contexto = "\n\n".join([c["text"][:300] for c in chunks[:3]])
+            prompt = f"""Analiza el siguiente contenido académico y genera una descripción
+concisa de 3 a 4 palabras que capture el tema principal.
+Responde ÚNICAMENTE con las palabras descriptivas, sin puntuación
+adicional ni explicaciones.
 
-def text_to_sql(self, query: str, schema: str) -> str:
-    """
-    Convierte pregunta en lenguaje natural a SQL.
-    Solo genera SELECT — el prompt instruye explícitamente al LLM
-    a no generar DELETE, UPDATE, INSERT, DROP.
-    El resultado se pasa a DBManager.execute_readonly_query().
+Contenido:
+{contexto}
 
-    Input:  query  → pregunta del usuario en lenguaje natural
-                     ej. "¿Cuántos documentos se subieron este mes?"
-            schema → descripción de las tablas disponibles
-    Output: str → query SQL lista para ejecutar
-                  ej. "SELECT COUNT(*) FROM dim_documentos
-                        WHERE upload_date >= '2024-01-01'"
-    """
+Descripción temática:"""
+            response = self.client.chat.completions.create(
+                messages=[{"role": "user", "content": prompt}],
+                model=LLM_MODEL,
+                temperature=0.0,
+                max_tokens=20
+            )
+            return response.choices[0].message.content.strip()
+        except Exception:
+            return "Sin clasificar"
+
+    def text_to_sql(self, query: str, schema: str) -> str:
+        """
+        Convierte pregunta en lenguaje natural a SQL.
+        Solo genera SELECT — el prompt instruye explícitamente al LLM
+        a no generar DELETE, UPDATE, INSERT, DROP.
+        El resultado se pasa a DBManager.execute_readonly_query().
+
+        Input:  query  → pregunta del usuario en lenguaje natural
+                         ej. "¿Cuántos documentos se subieron este mes?"
+                schema → descripción de las tablas disponibles
+        Output: str → query SQL lista para ejecutar
+                      ej. "SELECT COUNT(*) FROM dim_documentos
+                            WHERE upload_date >= '2024-01-01'"
+        """
+        import re
+        try:
+            prompt = f"""Eres un experto en SQL. Dado el siguiente schema de base de datos,
+genera ÚNICAMENTE la query SQL para responder la pregunta.
+Responde SOLO con SQL válido, sin explicaciones, sin markdown,
+sin bloques de código.
+IMPORTANTE: Solo genera SELECT. Nunca generes DELETE, UPDATE,
+INSERT, DROP, ALTER ni TRUNCATE.
+
+Schema:
+{schema}
+
+Pregunta: {query}
+
+SQL:"""
+            response = self.client.chat.completions.create(
+                messages=[{"role": "user", "content": prompt}],
+                model=LLM_MODEL,
+                temperature=0.0,
+                max_tokens=200
+            )
+            sql = response.choices[0].message.content.strip()
+            sql = re.sub(r"```(?:sql)?\s*|\s*```", "", sql).strip()
+            return sql
+        except Exception:
+            return "SELECT 1"

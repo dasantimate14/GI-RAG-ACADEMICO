@@ -232,12 +232,20 @@ class VectorStore:
     def get_document_embeddings(self, source: str) -> list[list[float]]:
         """
         Retorna todos los embeddings de chunks de un documento.
-        Usada por MLClassifier._compute_document_embedding().
 
         Input:  source → nombre del archivo ("tesis.pdf")
         Output: list[list[float]] → un vector por chunk
                 [[0.12, -0.45, ...], [0.33, 0.91, ...], ...]
         """
+        result = self.collection.get(
+            where={"source": source},
+            include=["embeddings"]
+        )
+        embeddings = result.get("embeddings", [])
+        if embeddings is None:
+            return []
+        return [e.tolist() if hasattr(e, "tolist") else e
+                for e in embeddings]
 
     def get_all_sources(self) -> list[str]:
         """
@@ -247,3 +255,7 @@ class VectorStore:
         Input:  nada
         Output: list[str] → ["tesis.pdf", "paper.pdf", "apuntes.pdf"]
         """
+        result    = self.collection.get(include=["metadatas"])
+        metadatas = result["metadatas"]
+        sources   = list({m["source"] for m in metadatas if "source" in m})
+        return sources

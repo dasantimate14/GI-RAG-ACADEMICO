@@ -90,7 +90,6 @@ class VectorStore:
         results = self.collection.query(**query_params)
 
         chunks = []
-
         documents = results.get("documents", [[]])[0]
         metadatas = results.get("metadatas", [[]])[0]
         distances = results.get("distances", [[]])[0]

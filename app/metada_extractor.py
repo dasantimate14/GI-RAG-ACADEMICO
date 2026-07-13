@@ -1,3 +1,5 @@
+import fitz, re, json
+from datetime import datetime
 from app.rag_chain import RAGChain
 
 class MetadataExtractor:
@@ -12,6 +14,57 @@ class MetadataExtractor:
         — self.rag_chain queda guardado
         """
         self.rag_chain = rag_chain
+
+    def _is_empty(self, value) -> bool:
+        """
+        Verifica si un campo de metadata está vacío.
+        Considera vacíos: None, "", " ", "none", "null", "unknown".
+        Función interna usada en merge_metadata() y extract().
+
+        Input:  value → cualquier valor de metadata
+        Output: bool → True si está vacío o es placeholder inútil
+        """
+        if value is None:
+            return True
+        cleaned = str(value).strip().lower()
+        return cleaned in {"", "none", "null", "unknown", "untitled", "sin título", "-"}
+
+    def _parsed_pdf_year(self, date_str:str) -> str:
+        """
+        Extrae el año del formato de fecha de PDF.
+        El formato estándar es "D:YYYYMMDDHHmmSS".
+        Función interna usada en extract_from_pdf().
+
+        Input:  date_str → "D:20240115103200" o "" o None
+        Output: str → "2024" o "" si no se puede extraer
+        """
+        if not date_str:
+            return ""
+        # El año está siempre en posiciones 2-6 si empieza con "D:"
+        if date_str.startswith("D:") and len(date_str) >= 6:
+            year = date_str[2:6]
+            if year.isdigit() and 1900 <= int(year) <= 2100:
+                return year
+        # Fallback: busca 4 dígitos consecutivos que parezcan año
+        match = re.search(r"(19|20)\d{2}", date_str)
+        return match.group() if match else ""
+
+    def _clean_field(self, value:str) -> str:
+        """
+        Limpia un campo de metadata eliminando caracteres
+        extraños comunes en PDFs mal formados.
+        Función interna usada en extract_from_pdf().
+
+        Input:  value → string crudo de fitz.metadata
+        Output: str → string limpio
+        """
+        if not value:
+            return ""
+        # Elimina caracteres de control y no imprimibles
+        cleaned = re.sub(r"[\x00-\x1F\x7F-\x9F]", "", value)
+        # Elimina espacios múltiples
+        cleaned = re.sub(r"\s+", " ", cleaned)
+        return cleaned.strip()
 
     def extract_from_pdf(self, pdf_path: str) -> dict:
         """

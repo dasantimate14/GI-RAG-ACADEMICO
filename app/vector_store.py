@@ -20,7 +20,10 @@ class VectorStore:
         Output: nada
         — self.client, self.collection y self.embedder quedan listos
         """
-        self.client = chromadb.PersistentClient(CHROMA_PATH)
+        self.client = chromadb.PersistentClient(
+            path=CHROMA_PATH,
+            settings=Settings(anonymized_telemetry=False)
+        )
         self.collection = self.client.get_or_create_collection(name=COLLECTION_NAME)
         self.embedder = EmbeddingsManager()
 

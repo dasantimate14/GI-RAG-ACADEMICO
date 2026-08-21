@@ -3,6 +3,18 @@ import sys
 from pathlib import Path
 from dotenv import load_dotenv
 
+# Desactivar telemetría de ChromaDB y parchar posthog para evitar incompatibilidad de firma en capture()
+os.environ["ANONYMIZED_TELEMETRY"] = "False"
+
+try:
+    import posthog
+    _no_op_capture = lambda *args, **kwargs: None
+    posthog.capture = _no_op_capture
+    if hasattr(posthog, "Posthog"):
+        posthog.Posthog.capture = _no_op_capture
+except Exception:
+    pass
+
 # Base directory (rag_academico)
 BASE_DIR = Path(__file__).resolve().parent
 

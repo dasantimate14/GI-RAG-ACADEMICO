@@ -6,7 +6,7 @@ pymupdf==1.24.11
 
 # === Embeddings ===
 sentence-transformers==3.0.1
-torch==2.4.0
+torch==2.6.0
 
 # === Vector Database ===
 chromadb==0.5.5

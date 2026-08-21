@@ -33,13 +33,13 @@ Path(UPLOAD_PATH).mkdir(parents=True, exist_ok=True)
 # ============================================
 # CHUNKING
 # ============================================
-CHUNK_SIZE = 1000
-CHUNK_OVERLAP = 200
+CHUNK_SIZE = 2000
+CHUNK_OVERLAP = 300
 
 # ============================================
 # EMBEDDINGS
 # ============================================
-EMBEDDING_MODEL = "paraphrase-multilingual-MiniLM-L12-v2"
+EMBEDDING_MODEL = "BAAI/bge-m3"
 
 # ============================================
 # BÚSQUEDA / RETRIEVAL

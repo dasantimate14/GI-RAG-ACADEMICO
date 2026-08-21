@@ -33,8 +33,8 @@ Path(UPLOAD_PATH).mkdir(parents=True, exist_ok=True)
 # ============================================
 # CHUNKING
 # ============================================
-CHUNK_SIZE = 1000
-CHUNK_OVERLAP = 200
+CHUNK_SIZE = 3000
+CHUNK_OVERLAP = 300
 
 # ============================================
 # EMBEDDINGS
@@ -44,13 +44,13 @@ EMBEDDING_MODEL = "paraphrase-multilingual-MiniLM-L12-v2"
 # ============================================
 # BÚSQUEDA / RETRIEVAL
 # ============================================
-TOP_K_RESULTS = 3
+TOP_K_RESULTS = 20
 
 # ============================================
 # LLM
 # ============================================
 LLM_PROVIDER ="groq"
-LLM_MODEL = "llama-3.1-8b-instant"
+LLM_MODEL = "openai/gpt-oss-20b"
 GROQ_API_KEY  = os.getenv("GROQ_API_KEY")
 
 if GROQ_API_KEY  is None:

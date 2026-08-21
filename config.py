@@ -44,8 +44,8 @@ EMBEDDING_MODEL = "paraphrase-multilingual-MiniLM-L12-v2"
 # ============================================
 # BÚSQUEDA / RETRIEVAL
 # ============================================
-TOP_K_RESULTS = 20
-
+TOP_K_RESULTS = 3
+RERANK_K_RESULTS = 3
 # ============================================
 # LLM
 # ============================================

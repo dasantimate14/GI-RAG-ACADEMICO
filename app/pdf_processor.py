@@ -115,88 +115,75 @@ class PDFProcessor:
                 ]
         """
         chunks = []
-
-        current_chunk = []
+        current_chunk_sentences = []
         current_size = 0
         chunk_id = 0
 
-        page_start = None
-        pages_in_chunk = set()
-
         for page in pages:
-
             cleaned_text = page["text"]
-
-            # Separar en oraciones
+            # Split text into paragraphs, then into individual sentences
             paragraphs = cleaned_text.split('\n')
+
             for paragraph in paragraphs:
-                sentences = re.split(r'(?<=[.!?])\s+', paragraph)
+                sentences = [s.strip() for s in re.split(r'(?<=[.!?])\s+', paragraph) if s.strip()]
 
                 for sentence in sentences:
-                    sentence = sentence.strip()
-                    if not sentence:
-                        continue
-
-                    # If a single sentence exceeds CHUNK_SIZE, force-split it
-                    if len(sentence) > CHUNK_SIZE:
-                        words = sentence.split()
-                        sentence = " ".join(words[:CHUNK_SIZE // 6])
-
                     sentence_size = len(sentence)
 
-                    if page_start is None:
-                        page_start = page["page"]
+                    # Prevent rare, massive lines from breaking the chunk limits
+                    if sentence_size > CHUNK_SIZE:
+                        sentence = sentence[:CHUNK_SIZE]
+                        sentence_size = len(sentence)
 
-                    if current_size + sentence_size <= CHUNK_SIZE:
-                        current_chunk.append(sentence)
-                        current_size += sentence_size
-                        pages_in_chunk.add(page["page"])
+                    # Check if adding this sentence triggers a chunk overflow
+                    if current_size + sentence_size > CHUNK_SIZE and current_chunk_sentences:
+                        # Compile the full text block for this chunk
+                        chunk_text_content = " ".join([item["text"] for item in current_chunk_sentences])
+                        chunk_pages = sorted(list(set(item["page"] for item in current_chunk_sentences)))
 
-                    else:
-                        chunks.append(
-                            {
-                                "text": " ".join(current_chunk),
-                                "metadata": {
-                                    "source": source,
-                                    "chunk_id": chunk_id,
-                                    "page_start": page_start,
-                                    "page_end": max(pages_in_chunk),
-                                    "pages": sorted(list(pages_in_chunk))
-                                }
+                        chunks.append({
+                            "text": chunk_text_content,
+                            "metadata": {
+                                "source": source,
+                                "chunk_id": chunk_id,
+                                "page_start": chunk_pages[0],
+                                "page_end": chunk_pages[-1],
+                                "pages": chunk_pages
                             }
-                        )
+                        })
                         chunk_id += 1
 
+                        # Safely build the overlap using sentences from the end of the current chunk
                         overlap_sentences = []
                         overlap_size = 0
-                        for overlap_content in reversed(current_chunk):
-                            if overlap_size + len(overlap_content) <= CHUNK_OVERLAP:
-                                overlap_sentences.insert(0, overlap_content)
-                                overlap_size += len(overlap_content)
+                        for item in reversed(current_chunk_sentences):
+                            if overlap_size + len(item["text"]) <= CHUNK_OVERLAP:
+                                overlap_sentences.insert(0, item)
+                                overlap_size += len(item["text"])
                             else:
                                 break
 
-                        current_chunk = overlap_sentences + [sentence]
-                        current_size = len(" ".join(current_chunk))
-                        pages_in_chunk = {page["page"]}
-                        page_start = page["page"]
+                        current_chunk_sentences = overlap_sentences
+                        current_size = overlap_size
 
-            # siguiente página
+                    # Safely track each sentence paired with its source page
+                    current_chunk_sentences.append({"text": sentence, "page": page["page"]})
+                    current_size += sentence_size
 
-        # Guardar último chunk
-        if current_chunk:
-            chunks.append(
-                {
-                    "text": " ".join(current_chunk),
-                    "metadata": {
-                        "source": source,
-                        "chunk_id": chunk_id,
-                        "page_start": page_start,
-                        "page_end": max(pages_in_chunk),
-                        "pages": sorted(list(pages_in_chunk))
-                    }
+        # Flush out any remaining text into a final chunk
+        if current_chunk_sentences:
+            chunk_text_content = " ".join([item["text"] for item in current_chunk_sentences])
+            chunk_pages = sorted(list(set(item["page"] for item in current_chunk_sentences)))
+            chunks.append({
+                "text": chunk_text_content,
+                "metadata": {
+                    "source": source,
+                    "chunk_id": chunk_id,
+                    "page_start": chunk_pages[0],
+                    "page_end": chunk_pages[-1],
+                    "pages": chunk_pages
                 }
-            )
+            })
 
         return chunks
 

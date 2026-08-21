@@ -39,7 +39,7 @@ CHUNK_OVERLAP = 300
 # ============================================
 # EMBEDDINGS
 # ============================================
-EMBEDDING_MODEL = "paraphrase-multilingual-MiniLM-L12-v2"
+EMBEDDING_MODEL = "multi-qa-mpnet-base-v2"
 
 # ============================================
 # BÚSQUEDA / RETRIEVAL

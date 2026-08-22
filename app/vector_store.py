@@ -1,11 +1,11 @@
-import chromadb
+import chromadb, os, re
 from chromadb.config import Settings
-import os
+from rank_bm25 import BM25Okapi #Implementación de BM25 con suavizado Okapi BM25
 from app.embeddings import EmbeddingsManager
 from config import (
     CHROMA_PATH,
     COLLECTION_NAME,
-    TOP_K_RESULTS
+    TOP_K_RETRIEVAL
 )
 
 class VectorStore:
@@ -23,6 +23,42 @@ class VectorStore:
         self.client = chromadb.PersistentClient(CHROMA_PATH)
         self.collection = self.client.get_or_create_collection(name=COLLECTION_NAME)
         self.embedder = EmbeddingsManager()
+        self._bm25_index = None
+        self._bm25_corpus = []
+
+    def _build_bm25_index(self) -> None:
+        """
+        Construye el índice BM25 con todos los chunks actualmente
+        en ChromaDB. Se llama automáticamente (lazy) antes de la
+        primera búsqueda por keyword, y se invalida cuando se
+        agregan o eliminan documentos.
+
+        Input:  nada
+        Output: nada — modifica self._bm25_index y self._bm25_corpus
+        """
+        result = self.collection.get(include=["documents", "metadatas"])
+        docs = result.get("documents", [])
+        metadatas = result.get("metadatas", [])
+
+        if not docs:
+            self._bm25_index = None
+            self._bm25_corpus = []
+            return
+
+        # Tokeniza cada chunk para BM25
+        tokenized = [
+            re.sub(r'[^\w\s]', '', doc.lower()).split()
+            for doc in docs
+        ]
+
+        self._bm25_index = BM25Okapi(tokenized)
+
+        # Guarda el corpus original para retornar texto real en los resultados
+        self._bm25_corpus = [
+            {"text": doc, "metadata": meta}
+            for doc, meta in zip(docs, metadatas)
+        ]
+
 
     def add_documents(self, chunks: list[dict]) -> int:
         """
@@ -80,7 +116,7 @@ class VectorStore:
         query_embeddings = self.embedder.generate_one(query)
         query_params = {
             "query_embeddings": [query_embeddings],
-            "n_results": TOP_K_RESULTS,
+            "n_results": TOP_K_RETRIEVAL,
             "include": ["documents", "metadatas", "distances"]
         }
 
@@ -227,4 +263,4 @@ class VectorStore:
             "total_documents": total_documents,
             "total_chunks": total_chunks,
             "total_pages": total_pages
-        }
+        }

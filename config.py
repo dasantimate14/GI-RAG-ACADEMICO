@@ -44,8 +44,12 @@ EMBEDDING_MODEL = "multi-qa-mpnet-base-v2"
 # ============================================
 # BÚSQUEDA / RETRIEVAL
 # ============================================
-TOP_K_RESULTS = 3
-RERANK_K_RESULTS = 3
+TOP_K_RETRIEVAL = 15  # chunks recuperados de ChromaDB
+TOP_K_SEMANTIC = 10  # chunks por búsqueda semántica
+TOP_K_KEYWORD = 8  # chunks por búsqueda keyword
+TOP_K_FINAL = 4  # chunks que llegan al LLM
+SIMILARITY_THRESHOLD = 0.20  # umbral mínimo de similitud
+SIMILARITY_THRESHOLD_MIN = 0.08  # umbral absoluto al relajar
 # ============================================
 # LLM
 # ============================================

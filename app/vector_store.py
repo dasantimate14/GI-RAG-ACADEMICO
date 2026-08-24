@@ -5,7 +5,8 @@ from app.embeddings import EmbeddingsManager
 from config import (
     CHROMA_PATH,
     COLLECTION_NAME,
-    TOP_K_RETRIEVAL
+    TOP_K_RETRIEVAL,
+    TOP_K_KEYWORD
 )
 
 class VectorStore:
@@ -58,6 +59,74 @@ class VectorStore:
             {"text": doc, "metadata": meta}
             for doc, meta in zip(docs, metadatas)
         ]
+
+def search_by_keyword(self, query: str, filter_source: str = None, n_results:int = None) -> list[dict]:
+    """
+    Búsqueda léxica por palabras clave usando BM25Okapi.
+    Complementa search() semántico para términos técnicos
+    muy específicos que el embedding no captura bien.
+
+    Ejemplo donde BM25 supera a semántica:
+      query: "BM25Okapi hyperparameter k1"
+      → embedding no sabe qué es BM25Okapi
+      → BM25 encuentra exactamente ese término en los chunks
+
+    Input:  query         → pregunta del usuario en texto plano
+            filter_source → nombre de PDF para filtrar (opcional)
+            n_results     → cuántos chunks retornar
+    Output: list[dict] → chunks ordenados por relevancia BM25
+            cada dict: {
+              "text":     str,
+              "metadata": dict,
+              "distance": float  ← score BM25 sin normalizar
+                                   (se normaliza en rag_chain)
+            }
+    """
+    k_results = n_results or TOP_K_KEYWORD
+
+    #Construye el índice si no existe o fue invalidado
+    if self._bm25_index is None:
+        self._build_bm25_index()
+
+    if self._bm25_index is None:
+        return []
+
+    #Tokeniza la query igual que el corpus
+    tokens = re.sub(r'[^\w\s]', '', query.lower()).split()
+    if not tokens:
+        return []
+
+    #Obtiene scores BM25 para todos los chunks
+    scores = self._bm25_index.get_scores(tokens)
+
+    # Empareja scores con chunks y ordena
+    scored_chunks = sorted(
+        zip(scores, self._bm25_corpus),
+        key=lambda x: x[0],
+        reverse=True
+    )
+
+    results = []
+    for score, chunk in scored_chunks:
+        # Filtra por documento si se especificó
+        if filter_source:
+            if chunk["metadata"].get("source") != filter_source:
+                continue
+
+        # Solo incluye chunks con coincidencias reales
+        if score <= 0:
+            break   # sorted descendente → si score=0, los siguientes también
+
+        results.append({
+            "text":     chunk["text"],
+            "metadata": chunk["metadata"],
+            "distance": float(score)   # float() convierte numpy → Python
+        })
+
+        if len(results) >= k_results:
+            break
+
+    return results
 
 
     def add_documents(self, chunks: list[dict]) -> int:

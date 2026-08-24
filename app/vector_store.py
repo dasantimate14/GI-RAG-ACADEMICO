@@ -5,7 +5,7 @@ from app.embeddings import EmbeddingsManager
 from config import (
     CHROMA_PATH,
     COLLECTION_NAME,
-    TOP_K_RETRIEVAL,
+    TOP_K_SEMANTIC,
     TOP_K_KEYWORD
 )
 
@@ -186,7 +186,7 @@ class VectorStore:
         query_embeddings = self.embedder.generate_one(query)
         query_params = {
             "query_embeddings": [query_embeddings],
-            "n_results": TOP_K_RETRIEVAL,
+            "n_results": TOP_K_SEMANTIC,
             "include": ["documents", "metadatas", "distances"]
         }
 

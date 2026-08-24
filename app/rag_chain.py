@@ -5,7 +5,9 @@ import numpy as np
 from app.vector_store import VectorStore
 from config import (
     GROQ_API_KEY,
-    LLM_MODEL
+    LLM_MODEL,
+    TOP_K_SEMANTIC,
+    TOP_K_KEYWORD,
 )
 
 
@@ -60,6 +62,105 @@ class RAGChain:
             chunk[score_key] = (chunk[score_key] - min_score) / (max_score - min_score)
 
         return chunks
+
+    def _hybrid_search(self, query: str, filter_source: str = None) -> list[dict]:
+        """
+        Combina búsqueda semántica y BM25 usando
+        Reciprocal Rank Fusion (RRF) para fusionar los rankings.
+
+        Por qué RRF en vez de sumar scores directamente:
+          Los scores de distintas fuentes no son comparables
+          aunque los normalices. RRF usa las posiciones en
+          el ranking (1°, 2°, 3°...) que son universalmente
+          comparables entre cualquier método_ de búsqueda.
+          Fórmula: RRF(d) = Σ 1/(k + rank(d)), k=60 estándar
+
+        Input:  query         → pregunta del usuario
+                filter_source → doc específico o None
+        Output: list[dict] → chunks únicos ordenados por RRF score
+                cada dict tiene "distance" = RRF score combinado
+        """
+        #Busqueda Semántica
+        semantic_results = self.vector_store.search(
+            query=query,
+            filter_source=filter_source,
+            #n_results=TOP_K_SEMANTIC
+        )
+
+        #Busqueda BM25
+        keywords_results = self.vector_store.search_by_keyword(
+            query=query,
+            filter_source=filter_source,
+            n_results=TOP_K_KEYWORD
+        )
+
+        #Normaliza scores BM25
+        keywords_results = self._normalize_scores(keywords_results)
+
+        #RRF
+        RRF_CONSTANT = 60  # constante estándar de RRF
+        reciprocal_rank_fusion = {}  # key: chunk_id, value: {"chunk": dict, "score": float}
+
+        for rank, chunk in enumerate(semantic_results):
+            # Usa chunk_id de metadata como identificador único
+            # Si no existe chunk_id, usa los primeros 80 chars del texto
+            chunk_id = str(chunk["metadata"].get("chunk_id", chunk["text"][:80]))
+
+            if chunk_id not in reciprocal_rank_fusion:
+                reciprocal_rank_fusion[chunk_id] = {"chunk": chunk, "score": 0.0}
+            reciprocal_rank_fusion[chunk_id]["score"] +=  1.0 / (RRF_CONSTANT + rank + 1)
+
+        for rank, chunk in enumerate(keywords_results):
+            chunk_id = str(chunk["metadata"].get("chunk_id", chunk["text"][:80]))
+
+            if chunk_id not in reciprocal_rank_fusion:
+                reciprocal_rank_fusion[chunk_id] = {"chunk": chunk, "score": 0.0}
+            reciprocal_rank_fusion[chunk_id]["score"] += 1.0 / (RRF_CONSTANT + rank + 1)
+
+        #Ordena por RRF score descendente
+        merged = sorted(reciprocal_rank_fusion.values(), key=lambda x: x["score"], reverse=True)
+
+        #Construye la lista final con RRF Score como "distance"
+
+        results = []
+        for item in merged:
+            chunk = item["chunk"].copy
+            chunk["distance"] = item["score"]
+            results.append(chunk)
+
+        return results
+
+    def _validate_and_rerank(self, chunks:list[dict], query:str) -> list[dict]:
+        """
+        Re-rankea chunks por similitud coseno real entre query y chunk,
+        luego filtra los que no superan el umbral de calidad.
+
+        Por qué re-rankear después de RRF:
+          RRF combina rankings pero no mide similitud real.
+          La similitud coseno entre el embedding de la query
+          y el embedding del chunk es la métrica más directa
+          de relevancia semántica real.
+
+        Por qué similitud coseno y no distancia euclidiana:
+          La similitud coseno mide el ángulo entre vectores,
+          no la distancia. Para significado semántico el ángulo
+          importa más que la magnitud. Es el estándar en NLP.
+
+        Fórmula: similitud_coseno(a,b) = dot(a,b) / (||a|| * ||b||)
+          Resultado en [-1, 1]:
+            1.0  → vectores idénticos (mismo significado)
+            0.0  → vectores ortogonales (sin relación)
+           -1.0  → vectores opuestos (significado contrario)
+          En embeddings de texto: prácticamente siempre entre 0 y 1
+
+        Input:  chunks → list[dict] output de _hybrid_search()
+                query  → pregunta original del usuario (str)
+        Output: list[dict] → máximo TOP_K_FINAL chunks
+                ordenados por cosine_similarity descendente
+                todos con cosine_similarity >= SIMILARITY_THRESHOLD
+                (o al menos 1 chunk si ninguno supera el umbral)
+        """
+
 
 
     def build_prompt(self, query: str, chunks: list[dict]) -> list[dict]:

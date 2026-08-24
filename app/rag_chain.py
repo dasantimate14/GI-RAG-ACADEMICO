@@ -8,6 +8,9 @@ from config import (
     LLM_MODEL,
     TOP_K_SEMANTIC,
     TOP_K_KEYWORD,
+    SIMILARITY_THRESHOLD,
+    SIMILARITY_THRESHOLD_MIN,
+    TOP_K_FINAL
 )
 
 
@@ -160,6 +163,52 @@ class RAGChain:
                 todos con cosine_similarity >= SIMILARITY_THRESHOLD
                 (o al menos 1 chunk si ninguno supera el umbral)
         """
+        if not chunks:
+            return []
+        # Embedding del Query
+        query_embedding = self.vector_store.embedder.generate_one(query)
+        query_arr = np.array(query_embedding)
+
+        #Calcula Similitud del Coseno para cada Chunk
+        for chunk in chunks:
+            chunk_embedding = self.vector_store.embedder.generate_one(
+                chunk["text"]
+            )
+            chunk_arr = np.array(chunk_embedding)
+            dot = np.dot(query_arr, chunk_arr)
+            norm_query = np.linalg.norm(query_arr)
+            norm_chunk = np.linalg.norm(chunk_arr)
+            norm = norm_query * norm_chunk
+
+            similarity = float(dot / norm) if norm > 0 else 0.0
+            chunk["cosine_similarity"] = round(similarity, 4)
+
+            #Ordena por similitud del coseno real descendente
+            chunks_sorted = sorted(
+                chunks,
+                key=lambda x:x["cosine_similarity"],
+                reverse=True
+            )
+
+            #Aplica umbral
+            validated = [
+                chunk for chunk in chunks_sorted
+                if chunk["cosine_similarity"] >= SIMILARITY_THRESHOLD
+            ]
+
+            #Relaja el Umbral en caso de no obtener ningún resultado
+            if len(validated) == 0:
+                validated = [
+                    chunk for chunk in chunks_sorted
+                    if chunk["cosine_similarity"] >= SIMILARITY_THRESHOLD_MIN
+                ]
+
+            if len(validated) == 0 and chunks_sorted:
+                validated = [chunks_sorted[0]]
+
+            return validated[:TOP_K_FINAL]
+
+
 
 
 

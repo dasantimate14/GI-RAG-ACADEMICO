@@ -1,4 +1,3 @@
-from lib2to3.btm_utils import reduce_tree
 
 from sentence_transformers import SentenceTransformer
 from config import EMBEDDING_MODEL

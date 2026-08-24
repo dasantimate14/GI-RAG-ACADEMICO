@@ -127,7 +127,7 @@ class RAGChain:
 
         results = []
         for item in merged:
-            chunk = item["chunk"].copy
+            chunk = item["chunk"].copy()
             chunk["distance"] = item["score"]
             results.append(chunk)
 
@@ -183,30 +183,30 @@ class RAGChain:
             similarity = float(dot / norm) if norm > 0 else 0.0
             chunk["cosine_similarity"] = round(similarity, 4)
 
-            #Ordena por similitud del coseno real descendente
-            chunks_sorted = sorted(
-                chunks,
-                key=lambda x:x["cosine_similarity"],
-                reverse=True
-            )
+        #Ordena por similitud del coseno real descendente
+        chunks_sorted = sorted(
+            chunks,
+            key=lambda x: x["cosine_similarity"],
+            reverse=True
+        )
 
-            #Aplica umbral
+        #Aplica umbral
+        validated = [
+            c for c in chunks_sorted
+            if c["cosine_similarity"] >= SIMILARITY_THRESHOLD
+        ]
+
+        #Relaja el Umbral en caso de no obtener ningún resultado
+        if len(validated) == 0:
             validated = [
-                chunk for chunk in chunks_sorted
-                if chunk["cosine_similarity"] >= SIMILARITY_THRESHOLD
+                c for c in chunks_sorted
+                if c["cosine_similarity"] >= SIMILARITY_THRESHOLD_MIN
             ]
 
-            #Relaja el Umbral en caso de no obtener ningún resultado
-            if len(validated) == 0:
-                validated = [
-                    chunk for chunk in chunks_sorted
-                    if chunk["cosine_similarity"] >= SIMILARITY_THRESHOLD_MIN
-                ]
+        if len(validated) == 0 and chunks_sorted:
+            validated = [chunks_sorted[0]]
 
-            if len(validated) == 0 and chunks_sorted:
-                validated = [chunks_sorted[0]]
-
-            return validated[:TOP_K_FINAL]
+        return validated[:TOP_K_FINAL]
 
     def build_prompt(self, query: str, chunks: list[dict]) -> list[dict]:
         """

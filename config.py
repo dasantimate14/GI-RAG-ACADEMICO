@@ -39,7 +39,7 @@ CHUNK_OVERLAP = 300
 # ============================================
 # EMBEDDINGS
 # ============================================
-EMBEDDING_MODEL = "multi-qa-mpnet-base-v2"
+EMBEDDING_MODEL = "sentence-transformers/multi-qa-mpnet-base-cos-v1"
 
 # ============================================
 # BÚSQUEDA / RETRIEVAL

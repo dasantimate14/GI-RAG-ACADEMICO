@@ -56,8 +56,6 @@ class PDFProcessor:
             page = file.load_page(page_num)
             text = page.get_text()
             pages_content.append({"page": page_num + 1, "text": text})
-            print(f"---Page {page_num + 1}---")
-            print(text)
         file.close()
         return pages_content
 

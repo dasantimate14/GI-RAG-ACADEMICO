@@ -1,3 +1,4 @@
+import ast
 import chromadb, os, re
 from chromadb.config import Settings
 from rank_bm25 import BM25Okapi #Implementación de BM25 con suavizado Okapi BM25
@@ -109,14 +110,14 @@ class VectorStore:
 
         results = []
         for score, chunk in scored_chunks:
+            # Once score hits 0, all remaining are also 0 → stop
+            if score <= 0:
+                break
+
             # Filtra por documento si se especificó
             if filter_source:
                 if chunk["metadata"].get("source") != filter_source:
                     continue
-
-            # Solo incluye chunks con coincidencias reales
-            if score <= 0:
-                break   # sorted descendente → si score=0, los siguientes también
 
             results.append({
                 "text":     chunk["text"],
@@ -210,8 +211,8 @@ class VectorStore:
         ):
             if "pages" in metadata and isinstance(metadata["pages"], str):
                 try:
-                    metadata["pages"] = eval(metadata["pages"])
-                except:
+                    metadata["pages"] = ast.literal_eval(metadata["pages"])
+                except (ValueError, SyntaxError):
                     pass
             chunks.append({
                 "text": document,
@@ -294,10 +295,10 @@ class VectorStore:
             pages_val = meta.get("pages", "[]")
             if isinstance(pages_val, str):
                 try:
-                    parsed_pages = eval(pages_val)
+                    parsed_pages = ast.literal_eval(pages_val)
                     if isinstance(parsed_pages, list):
                         docs[source]["pages_set"].update(parsed_pages)
-                except Exception:
+                except (ValueError, SyntaxError):
                     pass
             elif isinstance(pages_val, list):
                 docs[source]["pages_set"].update(pages_val)

@@ -1,4 +1,6 @@
 from groq import Groq
+import time
+import numpy as np
 
 from app.vector_store import VectorStore
 from config import (
@@ -24,6 +26,41 @@ class RAGChain:
         """
         self.client = Groq(api_key=GROQ_API_KEY)
         self.vector_store = vector_store
+
+    def _normalize_scores(self, chunks: list[dict], score_key: str = "distance") -> list[dict]:
+        """
+        Normaliza scores de un tipo de búsqueda a rango 0-1
+        usando min-max normalization.
+
+        Por qué es necesaria:
+          BM25 retorna scores en rango variable (ej. 0-15.3)
+          La búsqueda semántica retorna distances en 0-1
+          Para fusionarlos en RRF necesitan estar en el mismo rango.
+
+        Input:  chunks    → list[dict] con score en score_key
+                score_key → str, key donde está el score (default "distance")
+        Output: list[dict] → mismos chunks con score_key normalizado a 0-1
+                             modifica los dicts in-place Y retorna la lista
+        """
+        if not chunks:
+            return chunks
+
+        scores = [chunk[score_key] for chunk in chunks]
+        min_score = min(scores)
+        max_score = max(scores)
+
+        #Si todos los scores son iguales se asigna 1.0 a todos
+        if max_score == min_score:
+          for chunk in chunks:
+              chunk[score_key] = 1.0
+          return chunks
+
+        #Min-Max normalization: (x-min) / (max-min)
+        for chunk in chunks:
+            chunk[score_key] = (chunk[score_key] - min_score) / (max_score - min_score)
+
+        return chunks
+
 
     def build_prompt(self, query: str, chunks: list[dict]) -> list[dict]:
         """

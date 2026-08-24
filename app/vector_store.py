@@ -161,6 +161,7 @@ class VectorStore:
             embeddings=embeddings,
             metadatas=metadatas
         )
+        self._bm25_index = None
         return len(chunks)
 
 
@@ -251,6 +252,7 @@ class VectorStore:
             return False
 
         self.collection.delete(ids=ids)
+        self._bm25_index = None
         return True
 
     def get_all_documents(self) -> list[dict]:

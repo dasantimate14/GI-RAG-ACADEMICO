@@ -208,10 +208,6 @@ class RAGChain:
 
             return validated[:TOP_K_FINAL]
 
-
-
-
-
     def build_prompt(self, query: str, chunks: list[dict]) -> list[dict]:
         """
         Construye el prompt que se enviará al LLM.
@@ -226,16 +222,34 @@ class RAGChain:
             meta = chunk.get("metadata", {})
             source_name = meta.get("source", "Desconocido")
             pages = meta.get("pages", "N/A")
-            context_block_list.append(f"Doc {i+1} (Archivo: {source_name}, Páginas: {pages}):\n{chunk['text']}")
+            page_start = meta.get("page_start", pages)
+            relevancia = chunk.get("cosine_similarity", 0)
+
+            context_block_list.append(
+                f"Doc {i + 1} "
+                f"(Archivo: {source_name}, "
+                f"Páginas: {page_start}, "
+                f"Relevancia: {relevancia:.2f}):"
+                f"\n{chunk['text']}"
+            )
+
         context_block = "\n\n".join(context_block_list)
 
         system_instruction = (
             "Eres un asistente de Q&A, basado en hechos. Tu objetivo es responder las preguntas del usuario "
-            "usando solamente el contexto proporcionado. Sigue las siguientes reglas y restricciones: \n"
+            "usando solamente el contexto proporcionado. Sigue las siguientes reglas y restricciones:\n"
             "1. No uses conocimiento fuera del contexto.\n"
-            "2. Si la respuesta no se puede encontrar en el contexto, responde exactamente con: 'Disculpe. No pude encontrar la informacion solicitada en mi Base de Datos'.\n"
-            "3. Cita tus fuentes concatenando el nombre del documento (e.g., [Doc 1]) a tus hechos"
+            "2. Si la respuesta no se puede encontrar en el contexto, responde exactamente con: "
+            "'Disculpe. No pude encontrar la informacion solicitada en mi Base de Datos'.\n"
+            "3. Cita tus fuentes concatenando el nombre del documento (e.g., [Doc 1]) a tus hechos.\n"
+            "4. Si el contexto está en inglés y la pregunta en español, responde en español "
+            "usando el contexto en inglés como fuente. Si un término técnico no tiene "
+            "traducción común, mantenlo en inglés entre paréntesis junto a su traducción.\n"
+            "5. Sé específico y detallado — no des respuestas vagas. "
+            "Los documentos marcados con Relevancia más alta son más confiables; "
+            "prioriza su contenido si hay contradicción entre fuentes."
         )
+
         user_instruction = (
             f"Context:\n"
             f"==========\n"
@@ -243,6 +257,7 @@ class RAGChain:
             f"=================\n\n"
             f"Query: {query}\n"
         )
+
         messages = [
             {"role": "system", "content": system_instruction},
             {"role": "user", "content": user_instruction}
@@ -266,51 +281,51 @@ class RAGChain:
                     {"source": "tesis.pdf", "page": 7}
                   ]
                 }
-
-        Internamente:
-          1. Llama a self.vector_store.search(query)
-          2. Llama a self.build_prompt(query, chunks)
-          3. Envía el prompt a Groq
-          4. Retorna respuesta + fuentes
         """
-        resultado_busqueda = self.vector_store.search(query, filter_source=filter_source)
-        prompt = self.build_prompt(query=query, chunks=resultado_busqueda)
+        inicio = time.time()
 
-        chat_completion = self.client.chat.completions.create(
+        #Hybrid Search (Semantica + BM25)
+        candidates = self._hybrid_search(query, filter_source)
+
+        #Re-ranking por similitud del coseno + validación
+        top_chunks = self._validate_and_rerank(candidates, query)
+
+        #Sin chunks válidos entonces responde sin llamar al LLM
+        if not top_chunks:
+            fin = time.time()
+            return {
+                "answer": "El contexto proporcionado no contiene "
+                          "información sobre este tema.",
+                "sources": [],
+                "response_time_ms": int((fin - inicio) * 1000),
+                "similarity_scores": []
+            }
+
+        #Construir prompt y llamar al LLM
+        prompt = self.build_prompt(query=query, chunks=top_chunks)
+        response = self.client.chat.completions.create(
             messages=prompt,
             model=LLM_MODEL,
             temperature=0.0,
             max_tokens=1000
         )
-        answer = chat_completion.choices[0].message.content
+        answer = response.choices[0].message.content
 
-        sources = []
-        seen = set()
-        for chunk in resultado_busqueda:
-            metadata = chunk.get("metadata", {})
-            source_name = metadata.get("source")
-            pages_val = metadata.get("pages")
+        fin = time.time()
 
-            if isinstance(pages_val, str):
-                try:
-                    pages_val = eval(pages_val)
-                except:
-                    pass
-
-            if isinstance(pages_val, list):
-                for p in pages_val:
-                    key = (source_name, p)
-                    if key not in seen:
-                        seen.add(key)
-                        sources.append({"source": source_name, "page": p})
-            elif pages_val is not None:
-                key = (source_name, pages_val)
-                if key not in seen:
-                    seen.add(key)
-                    sources.append({"source": source_name, "page": pages_val})
+        #Extraer fuentes y scores para el retorno
+        sources = [
+            {
+                "source": chunk["metadata"].get("source", ""),
+                "page": chunk["metadata"].get("page_start", "?")
+            }
+            for chunk in top_chunks
+        ]
+        similarity_scores = [chunks["cosine_similarity"] for chunks in top_chunks]
 
         return {
             "answer": answer,
-            "sources": sources
+            "sources": sources,
+            "response_time_ms": int((fin - inicio) * 1000),
+            "similarity_scores": similarity_scores
         }
-

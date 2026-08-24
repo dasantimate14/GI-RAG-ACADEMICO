@@ -6,7 +6,8 @@ from config import (
     CHROMA_PATH,
     COLLECTION_NAME,
     TOP_K_SEMANTIC,
-    TOP_K_KEYWORD
+    TOP_K_KEYWORD,
+    TOP_K_RETRIEVAL
 )
 
 class VectorStore:
@@ -165,14 +166,15 @@ class VectorStore:
         return len(chunks)
 
 
-    def search(self, query: str, filter_source: str = None) -> list[dict]:
+    def search(self, query: str, filter_source: str = None, n_results: int = TOP_K_RETRIEVAL) -> list[dict]:
         """
         Busca los chunks más relevantes para una query.
-        Usa TOP_K_RESULTS de config.py.
+        Usa TOP_K_RETRIEVAL de config.py.
 
         Input:  query         → pregunta del usuario en texto plano
                 filter_source → (opcional) nombre de PDF para buscar
                                 solo dentro de ese documento
+                n_results     → (opcional) cantidad de chunks retornados
         Output: lista de dicts con los chunks más relevantes
                 [
                   {
@@ -186,7 +188,7 @@ class VectorStore:
         query_embeddings = self.embedder.generate_one(query)
         query_params = {
             "query_embeddings": [query_embeddings],
-            "n_results": TOP_K_SEMANTIC,
+            "n_results": n_results,
             "include": ["documents", "metadatas", "distances"]
         }
 

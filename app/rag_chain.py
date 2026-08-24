@@ -87,7 +87,7 @@ class RAGChain:
         semantic_results = self.vector_store.search(
             query=query,
             filter_source=filter_source,
-            #n_results=TOP_K_SEMANTIC
+            n_results=TOP_K_SEMANTIC
         )
 
         #Busqueda BM25

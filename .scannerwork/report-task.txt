@@ -1,0 +1,6 @@
+projectKey=Laboratorio-3
+serverUrl=http://localhost:9000
+serverVersion=26.10.0.133078
+dashboardUrl=http://localhost:9000/dashboard?id=Laboratorio-3
+ceTaskId=039acd62-9951-44a3-b389-8b1d803163e1
+ceTaskUrl=http://localhost:9000/api/ce/task?id=039acd62-9951-44a3-b389-8b1d803163e1
